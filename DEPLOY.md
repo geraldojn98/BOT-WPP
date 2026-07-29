@@ -104,13 +104,23 @@ O login do afiliado ML requer um navegador visível — isso só funciona localm
 1. Execute o bot localmente (`npm start`)
 2. Vá em **Configurações → Conectar Afiliados ML** e faça o login
 3. Após login, a sessão fica salva em `data/ml-session/`
-4. Copie essa pasta para o volume do Railway via Railway CLI:
+4. Copie essa pasta para o volume do Railway via Railway CLI (comando testado e funcional em julho/2026 — a sintaxe da CLI muda com frequência, ajuste se necessário):
 
 ```bash
 npm install -g @railway/cli
 railway login
-railway volume upload ./data/ml-session /app/data/ml-session
+railway link   # se ainda não estiver linkado ao projeto nesta pasta
+
+# IMPORTANTE: feche qualquer processo Chrome/Puppeteer local que esteja usando
+# data/ml-session antes de copiar (senão alguns arquivos como Cookies ficam
+# travados) — feche o painel/servidor local, ou mate os processos chrome.exe
+# que referenciam "ml-session" na linha de comando.
+
+railway volume --service <nome-do-servico> files --volume <nome-do-volume> \
+  upload ./data/ml-session / --overwrite
 ```
+
+> ⚠️ **Cuidado com o botão "Desconectar afiliado" no painel**: ele apaga a pasta `ml-session` por completo. Na nuvem, reconectar exige repetir esse fluxo manual (login local + reupload) — **não é auto-serviço como localmente**, já que "Conectar Afiliados ML" precisa de navegador visível e é bloqueado automaticamente quando `NODE_ENV=production`. Só desconecte se for realmente trocar de conta.
 
 ---
 
