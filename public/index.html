@@ -1,0 +1,3497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="ML Bot" />
+  <meta name="theme-color" content="#FFE600" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <title>ML Bot — Painel de Controle</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary: #FFE600;
+      --bg: #f0f2f5;
+      --card: #fff;
+      --text: #222;
+      --muted: #777;
+      --green: #00a650;
+      --red: #e74c3c;
+      --blue: #2980b9;
+      --orange: #e67e22;
+      --border: #e0e0e0;
+      --radius: 12px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* HEADER */
+    header { background: var(--primary); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.12); position: sticky; top: 0; z-index: 50; }
+    .header-left { display: flex; align-items: center; gap: 10px; }
+    header h1 { font-size: 1.2rem; font-weight: 800; }
+    .header-logo { font-size: 1.6rem; }
+    .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.08); padding: 6px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #aaa; flex-shrink: 0; }
+    .dot.connected { background: var(--green); box-shadow: 0 0 0 3px rgba(0,166,80,0.25); }
+    .dot.qr_pending { background: var(--orange); }
+
+    /* NAV */
+    nav { background: #fff; border-bottom: 2px solid var(--border); display: flex; gap: 0; overflow-x: auto; }
+    .nav-btn { padding: 14px 20px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: var(--muted); white-space: nowrap; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: all 0.2s; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+    .nav-btn:hover { color: var(--text); background: var(--bg); }
+    .nav-btn.active { color: #000; border-bottom-color: var(--primary); font-weight: 700; background: #fffde7; }
+
+    /* MAIN */
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+
+    /* PAGE */
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* CARD */
+    .card { background: var(--card); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); margin-bottom: 20px; }
+    .card-title { font-size: 1.05rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+    .card-title .icon { font-size: 1.2rem; }
+
+    /* HINT BOX */
+    .hint { background: #fffde7; border-left: 4px solid var(--primary); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; font-size: 0.88rem; color: #555; line-height: 1.6; }
+    .hint strong { color: #333; }
+    .hint-blue { background: #e8f4fd; border-left-color: var(--blue); }
+    .hint-green { background: #e8f8ef; border-left-color: var(--green); }
+    .hint-red { background: #fdecea; border-left-color: var(--red); }
+
+    /* FORM */
+    .form-group { margin-bottom: 18px; }
+    .form-label { display: flex; align-items: center; gap: 6px; font-size: 0.88rem; font-weight: 700; color: #444; margin-bottom: 6px; }
+    .form-label .badge { background: var(--primary); color: #000; font-size: 0.7rem; padding: 1px 6px; border-radius: 10px; }
+    .form-label .badge-opt { background: #eee; color: #666; font-size: 0.7rem; padding: 1px 6px; border-radius: 10px; }
+    .form-desc { font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; line-height: 1.5; }
+    .form-example { font-size: 0.78rem; color: var(--blue); margin-top: 4px; }
+    input[type=text], input[type=url], input[type=number], input[type=email], textarea, select {
+      width: 100%; padding: 10px 14px; border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 0.95rem; outline: none; transition: border 0.2s; background: #fafafa; color: var(--text);
+    }
+    input:focus, textarea:focus, select:focus { border-color: #aaa; background: #fff; }
+    textarea { resize: vertical; min-height: 90px; line-height: 1.5; }
+    .input-row { display: flex; gap: 12px; }
+    .input-row .form-group { flex: 1; }
+
+    /* BOTÕES */
+    .btn { padding: 10px 18px; border: none; border-radius: 8px; cursor: pointer; font-size: 0.9rem; font-weight: 700; transition: opacity 0.15s, transform 0.1s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { opacity: 0.88; }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary { background: var(--primary); color: #000; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-blue { background: var(--blue); color: #fff; }
+    .btn-ghost { background: #eee; color: #333; }
+    .btn-sm { padding: 6px 12px; font-size: 0.82rem; }
+    .btn-lg { padding: 13px 24px; font-size: 1rem; }
+    .btn-full { width: 100%; justify-content: center; }
+
+    /* STATS */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .stat-card { background: var(--card); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); text-align: center; border-top: 4px solid var(--primary); }
+    .stat-card .stat-val { font-size: 2rem; font-weight: 800; color: var(--text); }
+    .stat-card .stat-label { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+
+    /* PRODUTOS */
+    .product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .product-card { background: var(--card); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); border: 2px solid transparent; transition: border 0.2s; }
+    .product-card:hover { border-color: var(--primary); }
+    .product-card.inactive { opacity: 0.45; }
+    .product-img { width: 100%; height: 150px; object-fit: cover; background: #f5f5f5; }
+    .product-img-placeholder { width: 100%; height: 150px; background: linear-gradient(135deg, #f5f5f5, #e0e0e0); display: flex; align-items: center; justify-content: center; font-size: 2.5rem; }
+    .product-body { padding: 14px; }
+    .product-title { font-size: 0.88rem; font-weight: 600; line-height: 1.4; margin-bottom: 8px; }
+    .product-price { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .price-current { font-size: 1.1rem; font-weight: 800; color: var(--green); }
+    .price-original { font-size: 0.82rem; text-decoration: line-through; color: var(--muted); }
+    .discount-badge { background: var(--red); color: #fff; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 10px; }
+    .product-actions { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+
+    /* GRUPOS */
+    .group-list { display: flex; flex-direction: column; gap: 8px; }
+    .group-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 2px solid var(--border); border-radius: 10px; cursor: pointer; transition: all 0.2s; background: #fafafa; }
+    .group-item:hover { border-color: #aaa; background: #fff; }
+    .group-item.selected { border-color: var(--green); background: #e8f8ef; }
+    .group-item.disabled { opacity: 0.4; cursor: not-allowed; }
+    .group-check { width: 22px; height: 22px; border-radius: 6px; border: 2px solid #ccc; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.9rem; }
+    .group-item.selected .group-check { background: var(--green); border-color: var(--green); color: #fff; }
+    .group-info { flex: 1; }
+    .group-name { font-weight: 600; font-size: 0.93rem; }
+    .group-meta { font-size: 0.78rem; color: var(--muted); }
+    .group-count { font-size: 0.78rem; font-weight: 700; color: var(--green); background: #e8f8ef; padding: 2px 8px; border-radius: 10px; }
+
+    /* HISTÓRICO */
+    .history-item { padding: 16px; border-bottom: 1px solid var(--border); }
+    .history-item:last-child { border-bottom: none; }
+    .history-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    .tag { font-size: 0.75rem; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .tag-auto { background: #e8f4fd; color: var(--blue); }
+    .tag-manual { background: #fffde7; color: #b7960a; }
+    .history-text { font-size: 0.88rem; color: #444; line-height: 1.5; white-space: pre-wrap; }
+
+    /* QR */
+    .qr-container { text-align: center; padding: 24px; }
+    .qr-container img { width: 220px; height: 220px; border: 6px solid var(--primary); border-radius: 16px; margin: 16px auto; display: block; }
+    .qr-steps { text-align: left; max-width: 320px; margin: 0 auto; }
+    .qr-step { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 10px; font-size: 0.88rem; }
+    .step-num { background: var(--primary); color: #000; font-weight: 800; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 0.8rem; }
+
+    /* SEPARADOR */
+    .section-divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; }
+    .section-divider span { font-size: 0.82rem; color: var(--muted); white-space: nowrap; font-weight: 600; }
+    .section-divider::before, .section-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* TOAST */
+    #toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 10px; font-size: 0.9rem; font-weight: 600; display: none; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,0.2); animation: slideup 0.3s ease; }
+    .toast-ok { background: var(--green); color: #fff; }
+    .toast-err { background: var(--red); color: #fff; }
+    @keyframes slideup { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+    /* SCHEDULED MESSAGE CARDS */
+    .sched-msg-card { background: var(--bg); border: 1.5px solid var(--border); border-radius: 10px; padding: 14px 16px; display: flex; align-items: flex-start; gap: 12px; }
+    .sched-msg-card.inactive { opacity: 0.5; }
+    .sched-msg-info { flex: 1; }
+    .sched-msg-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 4px; }
+    .sched-msg-meta { font-size: 0.78rem; color: var(--muted); display: flex; gap: 10px; flex-wrap: wrap; }
+    .sched-msg-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+    /* SCHEDULER */
+    .day-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .day-btn { padding: 8px 14px; border: 2px solid var(--border); border-radius: 8px; background: #f5f5f5; color: var(--muted); font-weight: 700; font-size: 0.88rem; cursor: pointer; transition: all 0.15s; }
+    .day-btn.active { background: var(--primary); border-color: var(--primary); color: #000; }
+    .times-list { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-height: 36px; }
+    .time-chip { display: flex; align-items: center; gap: 6px; background: #e8f4fd; border: 1.5px solid #b3d7f0; border-radius: 20px; padding: 5px 12px; font-size: 0.9rem; font-weight: 700; color: #1a6fa3; }
+    .time-chip .remove-time { background: none; border: none; cursor: pointer; color: #999; font-size: 1rem; line-height: 1; padding: 0 2px; }
+    .time-chip .remove-time:hover { color: var(--red); }
+    .add-time-row { display: flex; gap: 10px; align-items: center; }
+    .add-time-row input[type="time"] { width: auto; flex: 0 0 130px; }
+    .cron-preview { background: #f0f2f5; border-radius: 8px; padding: 10px 14px; font-size: 0.82rem; color: #555; margin-top: 4px; margin-bottom: 4px; }
+
+    /* MODAL */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; align-items: center; justify-content: center; padding: 16px; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: #fff; border-radius: var(--radius); padding: 28px; width: 100%; max-width: 520px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.18); }
+    .modal-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+
+    /* EMPTY STATE */
+    .empty-state { text-align: center; padding: 48px 24px; color: var(--muted); }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.95rem; }
+
+    /* LOADING */
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 3px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* RESPONSIVO — DESKTOP */
+    @media (max-width: 600px) {
+      main { padding: 12px 10px; }
+      .card { padding: 14px; }
+      .input-row { flex-direction: column; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .product-grid { grid-template-columns: 1fr; }
+      .btn-lg { padding: 12px 18px; }
+    }
+
+    /* NAVEGAÇÃO MOBILE — barra inferior no celular */
+    @media (max-width: 640px) {
+      nav { display: none; }
+      body { padding-bottom: 70px; }
+      main { padding-bottom: 80px; }
+
+      #mobile-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #fff;
+        border-top: 1px solid var(--border);
+        z-index: 100;
+        box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+      #mobile-nav button {
+        flex: 1;
+        border: none;
+        background: none;
+        padding: 10px 4px 8px;
+        font-size: 0.62rem;
+        color: var(--muted);
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        font-weight: 600;
+        transition: color 0.15s;
+        min-height: 56px;
+      }
+      #mobile-nav button .nav-icon { font-size: 1.4rem; line-height: 1; }
+      #mobile-nav button.active { color: #000; }
+      #mobile-nav button.active .nav-icon { filter: drop-shadow(0 0 3px rgba(0,0,0,0.2)); }
+      #mobile-nav button.active::after {
+        content: '';
+        position: absolute;
+        bottom: env(safe-area-inset-bottom);
+        width: 24px;
+        height: 3px;
+        background: var(--primary);
+        border-radius: 3px 3px 0 0;
+        bottom: calc(env(safe-area-inset-bottom) + 0px);
+      }
+      #mobile-nav button { position: relative; }
+
+      header h1 { font-size: 1rem; }
+      .header-logo { font-size: 1.3rem; }
+      .status-pill { font-size: 0.75rem; padding: 5px 10px; }
+      .modal { padding: 20px 16px; }
+      .modal-overlay { padding: 0; align-items: flex-end; }
+      .modal { border-radius: var(--radius) var(--radius) 0 0; max-height: 92vh; }
+    }
+
+    @media (min-width: 641px) {
+      #mobile-nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="header-left">
+    <span class="header-logo">🤖</span>
+    <h1>ML WhatsApp Bot</h1>
+  </div>
+  <div class="status-pill">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">Verificando...</span>
+    <button id="reconnect-btn" onclick="reconnectWhatsApp()" style="display:none;margin-left:8px;padding:4px 10px;font-size:0.78rem;background:var(--orange);color:#fff;border:none;border-radius:12px;cursor:pointer;font-weight:600;">↺ Reconectar</button>
+  </div>
+</header>
+
+<nav>
+  <button class="nav-btn active" onclick="showPage('dashboard', this)">🏠 Início</button>
+  <button class="nav-btn" onclick="showPage('groups', this)">📱 Grupos</button>
+  <button class="nav-btn" onclick="showPage('autoreply', this)">🗨️ Respostas</button>
+  <button class="nav-btn" onclick="showPage('campaigns', this)">📢 Campanhas</button>
+  <button class="nav-btn" onclick="showPage('webhooks', this)">🔗 Integrações</button>
+  <button class="nav-btn" onclick="showPage('instagram', this)">📸 Instagram</button>
+  <button class="nav-btn" onclick="showPage('products', this)">📦 Produtos</button>
+  <button class="nav-btn" onclick="showPage('history', this)">📋 Histórico</button>
+  <button class="nav-btn" onclick="showPage('settings', this)">⚙️ Configurações</button>
+</nav>
+
+<main>
+
+  <!-- ===== INÍCIO ===== -->
+  <div class="page active" id="page-dashboard">
+
+    <div id="qr-card" class="card" style="display:none;">
+      <div class="card-title"><span class="icon">📱</span> Conectar WhatsApp</div>
+      <div class="hint hint-blue">
+        Para o bot funcionar, você precisa conectar seu WhatsApp escaneando o QR Code abaixo. Faça isso uma única vez!
+      </div>
+      <div class="qr-container">
+        <img id="qr-big" src="" alt="QR Code" />
+        <div class="qr-steps">
+          <div class="qr-step"><div class="step-num">1</div><span>Abra o WhatsApp no seu celular</span></div>
+          <div class="qr-step"><div class="step-num">2</div><span>Toque em <strong>⋮ Menu → Aparelhos conectados</strong></span></div>
+          <div class="qr-step"><div class="step-num">3</div><span>Toque em <strong>"Conectar aparelho"</strong></span></div>
+          <div class="qr-step"><div class="step-num">4</div><span>Aponte a câmera para o QR Code acima</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-val" id="stat-today">–</div><div class="stat-label">Posts hoje</div></div>
+      <div class="stat-card"><div class="stat-val" id="stat-products">–</div><div class="stat-label">Produtos ativos</div></div>
+      <div class="stat-card"><div class="stat-val" id="stat-groups">–</div><div class="stat-label">Grupos selecionados</div></div>
+      <div class="stat-card"><div class="stat-val" id="stat-total">–</div><div class="stat-label">Total de posts</div></div>
+    </div>
+
+    <div class="card" style="border: 2px solid var(--primary);">
+      <div class="card-title"><span class="icon">🚀</span> Postar agora</div>
+      <p style="font-size:0.9rem; color:var(--muted); margin-bottom:16px;">
+        O bot vai buscar um produto em promoção no Mercado Livre agora mesmo e enviar para os grupos selecionados.
+      </p>
+      <button class="btn btn-primary btn-lg" id="btn-auto-post" onclick="autoPost()">
+        🛒 Buscar produto e postar agora
+      </button>
+      <div id="auto-post-result" style="margin-top:14px; display:none;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">💬</span> Mensagens</div>
+
+      <!-- Abas -->
+      <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:18px;">
+        <button class="nav-btn active" id="msg-tab-now" onclick="showMsgTab('now',this)" style="padding:10px 16px;font-size:0.88rem;">📤 Enviar agora</button>
+        <button class="nav-btn" id="msg-tab-sched" onclick="showMsgTab('sched',this)" style="padding:10px 16px;font-size:0.88rem;">📅 Agendadas</button>
+      </div>
+
+      <!-- Enviar agora -->
+      <div id="msg-panel-now">
+        <div style="display:flex;gap:10px;margin-bottom:14px;">
+          <button id="msg-type-manual" class="btn btn-primary" onclick="switchMsgType('manual')" style="flex:1;">✍️ Escrever eu mesmo</button>
+          <button id="msg-type-ai" class="btn btn-ghost" onclick="switchMsgType('ai')" style="flex:1;">🤖 Bot escreve para mim</button>
+        </div>
+
+        <div id="msg-manual-area">
+          <textarea id="broadcast-text" rows="4" placeholder="Digite sua mensagem aqui...&#10;Ex: Pessoal, hoje tem frete grátis em tudo! 🚀"></textarea>
+        </div>
+        <div id="msg-ai-area" style="display:none;">
+          <div class="hint hint-blue" style="font-size:0.82rem;margin-bottom:10px;">
+            Descreva o que o bot deve escrever e ele criará uma mensagem criativa com emojis para você.
+          </div>
+          <textarea id="broadcast-ai-prompt" rows="3" placeholder="Ex: Avise que amanhã às 10h teremos uma live de promoções. Seja animado e use emojis."></textarea>
+          <button class="btn btn-ghost btn-sm" id="btn-preview-ai" onclick="previewAiMessage()" style="margin-top:8px;">👁 Pré-visualizar mensagem</button>
+          <div id="msg-ai-preview" style="display:none;margin-top:10px;"></div>
+        </div>
+
+        <div class="form-group" style="margin-top:14px;">
+          <div class="form-label">Enviar para:</div>
+          <div id="broadcast-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;margin-top:6px;">
+            <span style="color:var(--muted);font-size:0.85rem;">Carregando grupos...</span>
+          </div>
+        </div>
+
+        <button class="btn btn-green btn-full" id="btn-broadcast" onclick="broadcastCustomMessage()" style="margin-top:4px;">
+          📤 Enviar mensagem agora
+        </button>
+        <div id="broadcast-result" style="margin-top:12px; display:none;"></div>
+      </div>
+
+      <!-- Agendadas -->
+      <div id="msg-panel-sched" style="display:none;">
+        <button class="btn btn-primary btn-sm" onclick="openNewScheduledMsg()" style="margin-bottom:14px;">＋ Nova mensagem agendada</button>
+        <div id="scheduled-msgs-list">
+          <div class="empty-state" style="padding:24px;"><div class="empty-icon">📅</div><p>Nenhuma mensagem agendada ainda.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🔌</span> Conexão WhatsApp</div>
+      <div id="disconnect-status" style="font-size:0.9rem; color:var(--muted); margin-bottom:14px;">
+        Use o botão abaixo para desconectar completamente o WhatsApp. Para reconectar, clique em "Conectar WhatsApp" e escaneie o QR Code.
+      </div>
+      <button class="btn btn-red" id="btn-disconnect" onclick="disconnectWhatsApp()">
+        🔌 Desconectar WhatsApp
+      </button>
+      <button class="btn btn-green" id="btn-connect" onclick="connectWhatsApp()" style="display:none; margin-left:10px;">
+        📱 Conectar WhatsApp
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📝</span> Últimas postagens</div>
+      <div id="dashboard-recent"></div>
+    </div>
+  </div>
+
+  <!-- ===== GRUPOS ===== -->
+  <div class="page" id="page-groups">
+    <div class="hint hint-blue">
+      <strong>📱 Como funciona?</strong><br>
+      Selecione os grupos do WhatsApp para o bot enviar as postagens automaticamente. O bot vai enviar para todos os grupos selecionados ao mesmo tempo.
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📋</span> Seus grupos do WhatsApp</div>
+      <div class="hint hint-blue">
+        Marque quais grupos devem receber os posts de oferta. Se a listagem ao vivo do WhatsApp não estiver disponível (ex: acabou de conectar), o painel usa automaticamente um diretório próprio construído a partir da atividade dos grupos, com apelido editável.
+      </div>
+      <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
+        <button class="btn btn-green btn-lg" style="flex:1;" onclick="saveGroups()">💾 Salvar grupos selecionados</button>
+        <button class="btn btn-blue" onclick="tryAutoRefreshGroups()">🔄 Tentar listar automaticamente</button>
+      </div>
+      <div style="margin-bottom:12px;">
+        <span id="groups-counter" style="font-size:0.88rem; color:var(--muted);">Nenhum grupo selecionado</span>
+      </div>
+      <div id="group-list" class="group-list">
+        <div class="empty-state"><div class="empty-icon">💬</div><p>Carregando...</p></div>
+      </div>
+
+      <div class="section-divider"><span>IDENTIFICAR GRUPOS PELO NOME</span></div>
+      <div class="hint" style="font-size:0.82rem;">
+        <strong>🔍 Como funciona:</strong> clique em "Iniciar identificação", depois vá no WhatsApp do celular e mande uma mensagem qualquer (ex: "oi") em cada grupo que quiser nomear, um de cada vez. O grupo aparece aqui na hora pra você digitar o nome.
+      </div>
+      <button class="btn btn-blue" id="btn-identify" onclick="toggleIdentifyMode()">🔍 Iniciar identificação</button>
+      <div id="identify-panel" style="display:none;margin-top:12px;"></div>
+
+      <div class="section-divider"><span>ADICIONAR GRUPO PELO ID</span></div>
+      <div class="hint" style="font-size:0.82rem;">
+        Se preferir, cole o ID diretamente (formato <code>12036xxxxxxxxx@g.us</code>).
+      </div>
+      <div class="input-row">
+        <input type="text" id="new-group-id" placeholder="120363012345678901@g.us" style="flex:1;" />
+        <button class="btn btn-ghost" onclick="addKnownGroupManually()">＋ Adicionar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🎉</span> Boas-vindas, despedida e moderação</div>
+      <div class="hint hint-blue">Configure mensagens automáticas de entrada/saída e uma lista de palavras bloqueadas para um grupo específico.</div>
+      <div class="form-group">
+        <div class="form-label">Selecione o grupo</div>
+        <select id="gs-group-select" onchange="loadGroupSettingsFor(this.value)">
+          <option value="">Selecione um grupo...</option>
+        </select>
+      </div>
+      <div id="gs-admin-warning" class="hint hint-red" style="display:none;">⚠️ Você não é administrador desse grupo — a moderação (apagar mensagens) não vai funcionar até que o bot seja promovido a admin.</div>
+      <div id="gs-form-area" style="display:none;">
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="gs-welcome-enabled" style="width:auto;" /> Enviar mensagem de boas-vindas quando alguém entrar
+          </label>
+          <div class="form-desc">Use <code>{name}</code> para o nome de quem entrou e <code>{group}</code> para o nome do grupo.</div>
+          <textarea id="gs-welcome-message" rows="2" placeholder="Bem-vindo(a) ao grupo, {name}! 🎉"></textarea>
+          <div style="display:flex;gap:16px;margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-welcome-send-group" style="width:auto;" /> Enviar no grupo
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-welcome-send-dm" style="width:auto;" /> Enviar no privado da pessoa
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="gs-farewell-enabled" style="width:auto;" /> Enviar mensagem quando alguém sair
+          </label>
+          <textarea id="gs-farewell-message" rows="2" placeholder="{name} saiu do grupo. 👋"></textarea>
+          <div style="display:flex;gap:16px;margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-farewell-send-group" style="width:auto;" /> Enviar no grupo
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-farewell-send-dm" style="width:auto;" /> Enviar no privado da pessoa
+            </label>
+          </div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="checkbox" id="gs-moderation-enabled" style="width:auto;" /> Moderar mensagens com palavras bloqueadas
+          </label>
+          <div class="form-desc">Separe por vírgula. Ex: palavrão1, palavrão2</div>
+          <textarea id="gs-blocked-words" rows="2" placeholder="palavra1, palavra2"></textarea>
+          <select id="gs-moderation-action" style="margin-top:8px;">
+            <option value="delete">Apagar mensagem</option>
+            <option value="warn">Só avisar</option>
+            <option value="delete_warn">Apagar e avisar</option>
+          </select>
+          <div style="display:flex;gap:16px;margin-top:8px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-moderation-send-group" style="width:auto;" /> Avisar no grupo
+            </label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+              <input type="checkbox" id="gs-moderation-send-dm" style="width:auto;" /> Avisar no privado de quem violou
+            </label>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:10px;">
+            <input type="checkbox" id="gs-moderation-block-links" style="width:auto;" /> 🔗 Apagar automaticamente qualquer mensagem com link
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:6px;">
+            <input type="checkbox" id="gs-moderation-kick" style="width:auto;" /> 🚫 Remover do grupo automaticamente após 3 violações
+          </label>
+        </div>
+        <button class="btn btn-primary" onclick="saveGroupSettings()">💾 Salvar configurações do grupo</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🚀</span> Auto-escala de grupos</div>
+      <div class="hint hint-blue">
+        Quando o grupo ativo da série bater no limite de membros, o bot cria automaticamente o próximo grupo (#2, #3...) e passa a divulgar o link dele. Os grupos antigos continuam recebendo os posts de oferta normalmente.
+      </div>
+
+      <div id="gseries-create-area">
+        <div class="form-group">
+          <div class="form-label">Nome base da série <span class="badge">Obrigatório</span></div>
+          <input type="text" id="gseries-name-input" placeholder="Ex: Grupo de Ofertas" />
+          <div class="form-example">📌 Os grupos serão nomeados "Grupo de Ofertas #1", "#2"...</div>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Limite de membros por grupo</div>
+          <input type="number" id="gseries-threshold-input" value="1000" min="2" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Grupo #1 (já existente) <span class="badge">Obrigatório</span></div>
+          <select id="gseries-group-select">
+            <option value="">Selecione um grupo...</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="createGroupSeriesForm()">🚀 Ativar auto-escala</button>
+      </div>
+
+      <div id="gseries-detail-area" style="display:none;">
+        <div class="form-group">
+          <div class="form-label">Série: <strong id="gseries-name"></strong> <span id="gseries-status-badge"></span></div>
+        </div>
+        <div class="input-row" style="align-items:flex-end;">
+          <div class="form-group">
+            <div class="form-label">Limite de membros por grupo</div>
+            <input type="number" id="gseries-threshold-display" min="2" />
+          </div>
+          <div class="form-group">
+            <button class="btn btn-ghost" onclick="saveGroupSeriesThreshold()">💾 Salvar limite</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <button class="btn btn-ghost" id="gseries-toggle-btn" onclick="toggleGroupSeriesActive()">⏸️ Pausar auto-escala</button>
+          <button class="btn btn-red" onclick="deleteGroupSeriesConfirm()">🗑️ Excluir série</button>
+        </div>
+        <div id="gseries-groups-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== RESPOSTAS AUTOMÁTICAS ===== -->
+  <div class="page" id="page-autoreply">
+    <div class="hint hint-blue">
+      <strong>🗨️ Como funciona?</strong><br>
+      Crie regras de palavras-chave. Quando alguém enviar uma mensagem que combine com a regra (em grupo ou conversa direta), o bot responde automaticamente. Use o cooldown para evitar responder repetidamente à mesma pessoa.
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openNewAutoReplyRule()" style="margin-bottom:14px;">＋ Nova regra de resposta</button>
+    <div id="autoreply-list">
+      <div class="empty-state" style="padding:24px;"><div class="empty-icon">🗨️</div><p>Nenhuma regra criada ainda.</p></div>
+    </div>
+  </div>
+
+  <!-- ===== CAMPANHAS ===== -->
+  <div class="page" id="page-campaigns">
+    <div class="hint hint-red">
+      <strong>⚠️ Cuidado com banimento:</strong> envio em massa é a atividade que mais aumenta o risco de bloqueio do número no WhatsApp — principalmente para contatos que nunca conversaram com você. Prefira grupos ou contatos conhecidos, e use delays generosos entre os envios.
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openNewCampaign()" style="margin-bottom:14px;">＋ Nova campanha</button>
+    <div id="campaigns-list">
+      <div class="empty-state" style="padding:24px;"><div class="empty-icon">📢</div><p>Nenhuma campanha criada ainda.</p></div>
+    </div>
+  </div>
+
+  <!-- ===== INTEGRAÇÕES ===== -->
+  <div class="page" id="page-webhooks">
+    <div class="hint hint-blue">
+      <strong>🔗 Como funciona?</strong><br>
+      <strong>Token de entrada:</strong> gere um token e use-o para que sistemas externos (CRM, e-commerce, automações) disparem mensagens no WhatsApp via API.<br>
+      <strong>Webhook de saída:</strong> cadastre uma URL para receber automaticamente uma notificação HTTP toda vez que o bot receber uma mensagem.
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🔑</span> Tokens de entrada (sistema externo → WhatsApp)</div>
+      <button class="btn btn-primary btn-sm" onclick="openNewWebhookToken()" style="margin-bottom:14px;">＋ Gerar novo token</button>
+      <div id="webhook-tokens-list"><div class="empty-state" style="padding:24px;"><div class="empty-icon">🔑</div><p>Nenhum token gerado ainda.</p></div></div>
+      <div class="hint" style="margin-top:16px;">
+        <strong>💡 Como usar:</strong> envie um <code>POST</code> para <code id="inbound-url"></code> com o header <code>X-Webhook-Token</code> e um corpo JSON:
+        <pre style="background:#fff;border-radius:8px;padding:10px;margin-top:8px;font-size:0.78rem;overflow-x:auto;">{
+  "to": "5511999999999",
+  "text": "Olá! Seu pedido foi confirmado."
+}</pre>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">📡</span> Webhooks de saída (WhatsApp → sistema externo)</div>
+      <button class="btn btn-primary btn-sm" onclick="openNewWebhookSub()" style="margin-bottom:14px;">＋ Nova assinatura</button>
+      <div id="webhook-subs-list"><div class="empty-state" style="padding:24px;"><div class="empty-icon">📡</div><p>Nenhuma assinatura cadastrada ainda.</p></div></div>
+    </div>
+  </div>
+
+  <!-- ===== INSTAGRAM ===== -->
+  <div class="page" id="page-instagram">
+    <div class="hint hint-blue">
+      <strong>📸 Como funciona?</strong><br>
+      Quando alguém comenta uma palavra-chave (ex: "eu quero") em um post/reel seu, o bot manda uma resposta privada no Direct com o link do grupo de ofertas ativo no momento — automaticamente.
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">🔌</span> Status da conexão com a Meta</div>
+      <div id="instagram-status-list"></div>
+      <div class="hint" style="margin-top:12px;">
+        <strong>💡 Configuração:</strong> essas variáveis são definidas no arquivo <code>.env</code> do servidor (não pelo painel): <code>INSTAGRAM_PAGE_ID</code>, <code>INSTAGRAM_PAGE_ACCESS_TOKEN</code>, <code>INSTAGRAM_APP_SECRET</code>, <code>INSTAGRAM_WEBHOOK_VERIFY_TOKEN</code>. Veja o <code>DEPLOY.md</code> pro passo a passo de criação do app na Meta.
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="icon">💬</span> Regras de comentário → Direct</div>
+      <button class="btn btn-primary btn-sm" onclick="openNewIgRule()" style="margin-bottom:14px;">＋ Nova regra</button>
+      <div id="ig-rules-list">
+        <div class="empty-state" style="padding:24px;"><div class="empty-icon">💬</div><p>Nenhuma regra criada ainda.</p></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PRODUTOS ===== -->
+  <div class="page" id="page-products">
+    <div class="hint hint-green">
+      <strong>🛒 Como funciona?</strong><br>
+      Você pode deixar o bot buscar produtos automaticamente no Mercado Livre (configure os filtros em <strong>⚙️ Configurações</strong>), ou cadastrar produtos específicos aqui para o bot divulgar.
+    </div>
+
+    <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center;">
+      <button class="btn btn-primary" onclick="openModal('modal-import')">🔗 Importar produto do ML</button>
+      <button class="btn btn-ghost" onclick="openModal('modal-add')">✏️ Adicionar manualmente</button>
+      <button class="btn btn-ghost" id="btn-delete-all" onclick="deleteAllProducts()" style="color:var(--red);border-color:var(--red);margin-left:auto;">🗑️ Apagar todos</button>
+    </div>
+
+    <div id="product-grid" class="product-grid"></div>
+  </div>
+
+  <!-- ===== HISTÓRICO ===== -->
+  <div class="page" id="page-history">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0"><span class="icon">📋</span> Histórico de postagens</div>
+        <button class="btn btn-red btn-sm" onclick="clearHistory()">🗑️ Limpar histórico</button>
+      </div>
+      <div class="hint">Todas as mensagens que o bot já enviou para seus grupos.</div>
+      <div id="history-list"></div>
+    </div>
+  </div>
+
+  <!-- ===== CONFIGURAÇÕES ===== -->
+  <div class="page" id="page-settings">
+    <form id="settings-form" onsubmit="saveSettings(event)">
+
+      <!-- AGENDAMENTO -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🕐</span> Horários de postagem</div>
+        <div class="hint">
+          <strong>Quando o bot vai postar?</strong><br>
+          Escolha os dias da semana e os horários. O bot vai enviar automaticamente nos momentos que você configurar.
+        </div>
+
+        <!-- DIAS DA SEMANA -->
+        <div class="form-group">
+          <div class="form-label">📅 Dias da semana</div>
+          <div class="form-desc">Clique nos dias em que deseja que o bot poste. Todos marcados = todos os dias.</div>
+          <div class="day-buttons" id="day-buttons">
+            <button type="button" class="day-btn active" data-day="0">Dom</button>
+            <button type="button" class="day-btn active" data-day="1">Seg</button>
+            <button type="button" class="day-btn active" data-day="2">Ter</button>
+            <button type="button" class="day-btn active" data-day="3">Qua</button>
+            <button type="button" class="day-btn active" data-day="4">Qui</button>
+            <button type="button" class="day-btn active" data-day="5">Sex</button>
+            <button type="button" class="day-btn active" data-day="6">Sáb</button>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('all')">✅ Todos os dias</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('weekdays')">💼 Só dias úteis</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('weekend')">🎉 Só fim de semana</button>
+          </div>
+        </div>
+
+        <!-- HORÁRIOS -->
+        <div class="form-group">
+          <div class="form-label">⏰ Horários de envio</div>
+          <div class="form-desc">Adicione os horários em que o bot deve postar. Clique no ✕ para remover.</div>
+          <div class="times-list" id="times-list"></div>
+          <div class="add-time-row">
+            <input type="time" id="new-time-input" value="09:00" />
+            <button type="button" class="btn btn-primary btn-sm" onclick="addTime()">＋ Adicionar horário</button>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <span style="font-size:0.8rem;color:var(--muted);align-self:center;">Sugestões:</span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('09:00,12:00,18:00')">☀️ 9h, 12h e 18h</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('08:00,20:00')">🌅 Manhã e noite</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('09:00,13:00,17:00,21:00')">🔄 4x por dia</button>
+          </div>
+        </div>
+
+        <!-- PREVIEW DO CRON -->
+        <div class="cron-preview" id="cron-preview">
+          <span>⚙️ Agendamento configurado:</span> <strong id="cron-preview-text">—</strong>
+        </div>
+        <input type="hidden" name="post_times" id="post-times-hidden" />
+        <input type="hidden" name="post_days"  id="post-days-hidden" />
+
+        <div class="form-group" style="margin-top:18px;">
+          <div class="form-label">Máximo de posts por dia <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Limite diário de postagens. Deixe em branco para sem limite.</div>
+          <input type="number" name="max_posts_per_day" min="1" placeholder="Ex: 6" id="max-posts-input" oninput="checkMaxPosts(this.value)" />
+          <div id="max-posts-warning" style="display:none;" class="hint hint-red" style="margin-top:6px; font-size:0.82rem;">
+            ⚠️ Mais de 8 posts por dia pode parecer spam para os membros do grupo e aumentar o risco de banimento.
+          </div>
+          <div class="form-example">📌 Recomendado: entre 3 e 8 posts por dia.</div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Bot ativo?</div>
+          <div class="form-desc">Você pode pausar o bot sem precisar fechar o programa.</div>
+          <select name="bot_active">
+            <option value="1">✅ Sim — Bot funcionando normalmente</option>
+            <option value="0">⏸️ Não — Bot pausado (não envia nada)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- FILTROS DE BUSCA -->
+      <div class="card">
+        <div class="card-title"><span class="icon">🔍</span> O que o bot deve buscar?</div>
+        <div class="hint">
+          <strong>O bot pesquisa promoções no Mercado Livre automaticamente.</strong><br>
+          Configure aqui quais tipos de produto ele deve procurar e em qual faixa de preço.
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Palavras-chave <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Escreva o que você quer que o bot procure. Separe com vírgula para o bot alternar entre elas.</div>
+          <input type="text" name="search_keywords" placeholder="Ex: fone bluetooth, tênis, fritadeira air fryer, notebook" />
+          <div class="form-example">📌 Dica: quanto mais específico, melhor! Ex: "tênis masculino nike" ao invés de só "tênis".<br>
+          Se deixar vazio, o bot vai buscar qualquer produto em promoção.</div>
+        </div>
+
+        <div class="input-row">
+          <div class="form-group">
+            <div class="form-label">Preço mínimo (R$) <span class="badge-opt">Opcional</span></div>
+            <div class="form-desc">Não vai postar produtos mais baratos que isso.</div>
+            <input type="number" name="price_min" min="0" step="1" placeholder="Ex: 50" />
+          </div>
+          <div class="form-group">
+            <div class="form-label">Preço máximo (R$) <span class="badge-opt">Opcional</span></div>
+            <div class="form-desc">Não vai postar produtos mais caros que isso.</div>
+            <input type="number" name="price_max" min="0" step="1" placeholder="Ex: 500" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Desconto mínimo (%) <span class="badge">Obrigatório</span></div>
+          <div class="form-desc">O bot só vai postar produtos que tiverem pelo menos esse desconto.</div>
+          <input type="number" name="min_discount" min="1" max="99" placeholder="Ex: 20" />
+          <div class="form-example">📌 Recomendado: 20% ou mais. Produtos com desconto alto vendem melhor!</div>
+        </div>
+      </div>
+
+      <!-- TEXTO DAS MENSAGENS -->
+      <div class="card">
+        <div class="card-title"><span class="icon">✍️</span> Como o bot escreve as mensagens?</div>
+        <div class="hint">
+          <strong>O bot usa inteligência artificial (Claude) para criar textos diferentes a cada post.</strong><br>
+          Aqui você pode personalizar como esses textos devem ser escritos.
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Instrução para o bot <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Diga ao bot como ele deve escrever as mensagens. Quanto mais detalhado, melhor o resultado.</div>
+          <textarea name="claude_prompt" rows="5"></textarea>
+          <div class="form-example">📌 Exemplo: "Escreva em português informal e animado. Use emojis. Máximo 3 parágrafos curtos. Sempre mencione o desconto e o preço."</div>
+        </div>
+
+        <div id="no-api-warning" class="hint hint-red" style="display:none;">
+          ⚠️ <strong>Chave da API não configurada.</strong> O bot está usando textos automáticos simples. Para textos mais criativos e persuasivos, configure sua chave da Anthropic (Claude) abaixo.
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Chave da API Anthropic (Claude) <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Com essa chave, o bot escreve textos muito mais criativos e personalizados para cada produto.</div>
+          <input type="text" name="anthropic_api_key" placeholder="sk-ant-..." />
+          <div class="form-example">📌 Obtenha sua chave em: <a href="https://console.anthropic.com" target="_blank" style="color:var(--blue)">console.anthropic.com</a></div>
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-full btn-lg">💾 Salvar todas as configurações</button>
+    </form>
+
+    <!-- CONEXÃO AFILIADOS ML -->
+    <div class="card" style="margin-top:20px;">
+      <div class="card-title"><span class="icon">🔗</span> Links meli.la automáticos</div>
+      <div class="hint hint-green">
+        <strong>Gere links meli.la automaticamente!</strong><br>
+        Conecte sua conta de afiliados do ML. O bot gera os links meli.la sozinho em cada post. Para trocar de conta, clique em "Desconectar" e faça login com outra conta.
+      </div>
+      <div id="ml-affiliate-status" style="margin-bottom:14px; font-size:0.9rem;"></div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="setupMlAffiliate()" id="btn-ml-affiliate">
+          🔗 Conectar Afiliados ML
+        </button>
+        <button class="btn btn-red btn-sm" onclick="disconnectMlAffiliate()" id="btn-ml-disconnect" style="display:none;">
+          🔌 Desconectar afiliado
+        </button>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<!-- Navegação mobile (barra inferior) -->
+<div id="mobile-nav">
+  <button class="active" id="mnav-dashboard" onclick="showPage('dashboard', this); setMobileNav('dashboard')">
+    <span class="nav-icon">🏠</span>Início
+  </button>
+  <button id="mnav-groups" onclick="showPage('groups', this); setMobileNav('groups')">
+    <span class="nav-icon">📱</span>Grupos
+  </button>
+  <button id="mnav-autoreply" onclick="showPage('autoreply', this); setMobileNav('autoreply')">
+    <span class="nav-icon">🗨️</span>Respostas
+  </button>
+  <button id="mnav-campaigns" onclick="showPage('campaigns', this); setMobileNav('campaigns')">
+    <span class="nav-icon">📢</span>Campanhas
+  </button>
+  <button id="mnav-webhooks" onclick="showPage('webhooks', this); setMobileNav('webhooks')">
+    <span class="nav-icon">🔗</span>Integr.
+  </button>
+  <button id="mnav-instagram" onclick="showPage('instagram', this); setMobileNav('instagram')">
+    <span class="nav-icon">📸</span>Instagram
+  </button>
+  <button id="mnav-products" onclick="showPage('products', this); setMobileNav('products')">
+    <span class="nav-icon">📦</span>Produtos
+  </button>
+  <button id="mnav-history" onclick="showPage('history', this); setMobileNav('history')">
+    <span class="nav-icon">📋</span>Histórico
+  </button>
+  <button id="mnav-settings" onclick="showPage('settings', this); setMobileNav('settings')">
+    <span class="nav-icon">⚙️</span>Config
+  </button>
+</div>
+
+<!-- Modal: Importar produto -->
+<div class="modal-overlay" id="modal-import">
+  <div class="modal">
+    <div class="modal-title">🔗 Importar produto do Mercado Livre</div>
+    <div class="hint hint-blue">
+      <strong>Como funciona?</strong><br>
+      1. Cole o link longo do produto (da barra do navegador)<br>
+      2. Se tiver um link de afiliado (meli.la/...), cole no segundo campo<br>
+      O bot vai usar o link de afiliado para postar — sua comissão garantida! ✅
+    </div>
+    <div class="form-group">
+      <div class="form-label">Link do produto <span class="badge">Obrigatório</span></div>
+      <div class="form-desc">Abra o produto no Mercado Livre e copie o link da barra do navegador.</div>
+      <input type="text" id="import-url" placeholder="https://www.mercadolivre.com.br/..." />
+      <div class="form-example">📌 Ex: https://www.mercadolivre.com.br/fone-bluetooth.../p/MLB123...</div>
+    </div>
+    <div class="form-group">
+      <div class="form-label">Seu link de afiliado <span class="badge-opt">Recomendado</span></div>
+      <div class="form-desc">Se você gerou um link curto de afiliado (meli.la/...), cole aqui. O bot vai postar esse link para você ganhar comissão.</div>
+      <input type="text" id="import-affiliate" placeholder="https://meli.la/..." />
+    </div>
+    <div class="form-group">
+      <div class="form-label">Imagem do produto <span class="badge-opt">Opcional</span></div>
+      <div class="form-desc">Envie uma foto ou cole o link. Se deixar vazio, o bot usa a imagem do Mercado Livre automaticamente.</div>
+      <div id="import-img-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+        <button type="button" class="btn btn-primary btn-sm" id="import-img-tab-file" onclick="switchImgTab('import','file')">📁 Enviar arquivo</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="import-img-tab-url" onclick="switchImgTab('import','url')">🔗 Usar URL</button>
+      </div>
+      <div id="import-img-file-area">
+        <input type="file" id="import-img-file" accept="image/*" onchange="handleImgFile('import')" style="width:100%;padding:8px;border:1.5px dashed var(--border);border-radius:8px;background:#fafafa;cursor:pointer;" />
+        <div id="import-img-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+      </div>
+      <div id="import-img-url-area" style="display:none;">
+        <input type="url" id="import-img-url" placeholder="https://..." oninput="previewImgUrl('import')" />
+        <div id="import-img-url-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+      </div>
+    </div>
+    <div id="import-result" style="display:none;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="importProduct()" id="import-btn">🔍 Buscar produto</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-import')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Adicionar manual -->
+<div class="modal-overlay" id="modal-add">
+  <div class="modal">
+    <div class="modal-title">✏️ Adicionar produto manualmente</div>
+    <div class="hint">Use isso se quiser divulgar um produto específico que você mesmo escolheu.</div>
+    <form id="add-product-form" onsubmit="addProductManual(event)">
+      <div class="form-group">
+        <div class="form-label">Nome do produto <span class="badge">Obrigatório</span></div>
+        <input type="text" name="title" required placeholder="Ex: Fone de Ouvido Bluetooth JBL" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Link do produto <span class="badge">Obrigatório</span></div>
+        <input type="url" name="url" required placeholder="https://..." />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Link de afiliado <span class="badge-opt">Recomendado</span></div>
+        <div class="form-desc">Seu link personalizado com seu ID de afiliado para ganhar comissão.</div>
+        <input type="url" name="affiliate_url" placeholder="https://mercadolivre.com/afiliado/..." />
+      </div>
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">Preço atual (R$)</div>
+          <input type="number" name="price" step="0.01" placeholder="Ex: 199.90" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Preço original (R$)</div>
+          <input type="number" name="original_price" step="0.01" placeholder="Ex: 299.90" />
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Imagem do produto <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Envie uma foto ou cole o link da imagem.</div>
+        <div id="add-img-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+          <button type="button" class="btn btn-primary btn-sm" id="add-img-tab-file" onclick="switchImgTab('add','file')">📁 Enviar arquivo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="add-img-tab-url" onclick="switchImgTab('add','url')">🔗 Usar URL</button>
+        </div>
+        <div id="add-img-file-area">
+          <input type="file" id="add-img-file" accept="image/*" onchange="handleImgFile('add')" style="width:100%;padding:8px;border:1.5px dashed var(--border);border-radius:8px;background:#fafafa;cursor:pointer;" />
+          <div id="add-img-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+        </div>
+        <div id="add-img-url-area" style="display:none;">
+          <input type="url" id="add-img-url" placeholder="https://..." oninput="previewImgUrl('add')" />
+          <div id="add-img-url-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+        </div>
+        <input type="hidden" name="image_url" id="add-img-value" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Observação para o bot <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Qualquer informação extra que o bot deve mencionar ao divulgar esse produto.</div>
+        <textarea name="custom_text" placeholder="Ex: produto importado, frete grátis, só hoje"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">✅ Salvar produto</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-add')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Editar produto -->
+<div class="modal-overlay" id="modal-edit">
+  <div class="modal">
+    <div class="modal-title">✏️ Editar produto</div>
+    <form id="edit-product-form" onsubmit="saveEditProduct(event)">
+      <input type="hidden" name="id" />
+      <div class="form-group">
+        <div class="form-label">Nome do produto <span class="badge">Obrigatório</span></div>
+        <input type="text" name="title" required />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Link do produto <span class="badge">Obrigatório</span></div>
+        <input type="url" name="url" required />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Link de afiliado</div>
+        <input type="url" name="affiliate_url" />
+      </div>
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">Preço atual (R$)</div>
+          <input type="number" name="price" step="0.01" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Preço original (R$)</div>
+          <input type="number" name="original_price" step="0.01" />
+        </div>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Imagem do produto</div>
+        <div id="edit-img-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+          <button type="button" class="btn btn-primary btn-sm" id="edit-img-tab-file" onclick="switchImgTab('edit','file')">📁 Enviar arquivo</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="edit-img-tab-url" onclick="switchImgTab('edit','url')">🔗 Usar URL</button>
+        </div>
+        <div id="edit-img-file-area">
+          <input type="file" id="edit-img-file" accept="image/*" onchange="handleImgFile('edit')" style="width:100%;padding:8px;border:1.5px dashed var(--border);border-radius:8px;background:#fafafa;cursor:pointer;" />
+          <div id="edit-img-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+        </div>
+        <div id="edit-img-url-area" style="display:none;">
+          <input type="url" id="edit-img-url" placeholder="https://..." oninput="previewImgUrl('edit')" />
+          <div id="edit-img-url-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+        </div>
+        <input type="hidden" name="image_url" id="edit-img-value" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Observação para o bot</div>
+        <textarea name="custom_text"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar alterações</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-edit')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Modal: Criar/Editar mensagem agendada -->
+<div class="modal-overlay" id="modal-scheduled-msg">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title" id="scheduled-msg-modal-title">📅 Nova mensagem agendada</div>
+    <form id="scheduled-msg-form" onsubmit="saveScheduledMsg(event)">
+      <input type="hidden" id="sched-id" />
+      <div class="form-group">
+        <div class="form-label">Nome da mensagem <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">Ex: Bom dia, Promoção de sexta, Feliz Natal...</div>
+        <input type="text" id="sched-name" required placeholder="Ex: Bom dia diário" />
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Tipo de mensagem</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="sched-type" value="fixed" checked onchange="updateSchedType()" style="width:auto;"> ✍️ Texto fixo
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="sched-type" value="ai" onchange="updateSchedType()" style="width:auto;"> 🤖 Gerado pelo bot
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group" id="sched-fixed-area">
+        <div class="form-label">Texto da mensagem</div>
+        <textarea id="sched-message" rows="3" placeholder="Ex: Bom dia pessoal! ☀️ Hoje temos promoções incríveis esperando por vocês!"></textarea>
+      </div>
+      <div class="form-group" id="sched-ai-area" style="display:none;">
+        <div class="form-label">O que o bot deve escrever?</div>
+        <div class="form-desc">Descreva o tema da mensagem. O bot vai criar um texto diferente a cada envio.</div>
+        <textarea id="sched-prompt" rows="3" placeholder="Ex: Uma mensagem de bom dia animada para um grupo de promoções, mencionando que o dia é sexta-feira e que tem um bom fim de semana pela frente."></textarea>
+        <button type="button" class="btn btn-ghost btn-sm" id="btn-preview-sched" onclick="previewSchedMessage()" style="margin-top:8px;">👁 Pré-visualizar mensagem</button>
+        <div id="sched-msg-preview" style="display:none;margin-top:8px;"></div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">📅 Dias da semana</div>
+        <div class="day-buttons" id="sched-day-buttons">
+          <button type="button" class="day-btn active" data-sday="0">Dom</button>
+          <button type="button" class="day-btn active" data-sday="1">Seg</button>
+          <button type="button" class="day-btn active" data-sday="2">Ter</button>
+          <button type="button" class="day-btn active" data-sday="3">Qua</button>
+          <button type="button" class="day-btn active" data-sday="4">Qui</button>
+          <button type="button" class="day-btn active" data-sday="5">Sex</button>
+          <button type="button" class="day-btn active" data-sday="6">Sáb</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setSchedDays('all')">Todos</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setSchedDays('weekdays')">Dias úteis</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setSchedDays('weekend')">Fim de semana</button>
+        </div>
+      </div>
+
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">⏰ Horário (de)</div>
+          <div class="form-desc">Horário ou início da janela de envio.</div>
+          <input type="time" id="sched-time-start" value="07:00" required />
+        </div>
+        <div class="form-group">
+          <div class="form-label">⏰ Horário (até) <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Deixe em branco para horário fixo, ou defina um intervalo para envio aleatório.</div>
+          <input type="time" id="sched-time-end" placeholder="Ex: 07:30" />
+        </div>
+      </div>
+      <div class="hint" style="font-size:0.82rem;margin-top:-10px;">
+        💡 Se definir "de 7:10 até 7:30", o bot escolherá um minuto aleatório dentro desse intervalo a cada dia — fica mais orgânico!
+      </div>
+
+      <div class="form-group" style="margin-top:12px;">
+        <div class="form-label">📱 Grupos para enviar</div>
+        <div class="form-desc">Selecione em quais grupos essa mensagem será enviada.</div>
+        <div id="sched-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">🗓️ Datas especiais <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Nessas datas, o bot enviará uma mensagem específica ao invés da padrão.</div>
+        <div id="sched-special-dates-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:4px;">Data (MM/DD)</div>
+            <input type="text" id="sched-special-date" placeholder="Ex: 12/25" style="width:120px;" pattern="\\d{2}/\\d{2}" />
+          </div>
+          <div style="flex:1;min-width:160px;">
+            <div style="font-size:0.78rem;color:var(--muted);margin-bottom:4px;">Mensagem</div>
+            <input type="text" id="sched-special-msg" placeholder="Ex: 🎄 Feliz Natal a todos!" />
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addSpecialDate()" style="margin-bottom:1px;">＋ Adicionar</button>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar mensagem</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-scheduled-msg')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Criar/Editar regra de resposta automática -->
+<div class="modal-overlay" id="modal-autoreply">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="autoreply-modal-title">🗨️ Nova regra de resposta</div>
+    <form id="autoreply-form" onsubmit="saveAutoReplyRule(event)">
+      <input type="hidden" id="ar-id" />
+      <div class="form-group">
+        <div class="form-label">Nome da regra <span class="badge">Obrigatório</span></div>
+        <input type="text" id="ar-name" required placeholder="Ex: Saudação" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Quando a mensagem...</div>
+        <select id="ar-trigger-type" onchange="updateAutoReplyTriggerUI()">
+          <option value="contains">Contiver</option>
+          <option value="exact">For exatamente igual</option>
+          <option value="starts_with">Começar com</option>
+          <option value="regex">Combinar com regex (avançado)</option>
+        </select>
+      </div>
+      <div class="form-group" id="ar-keywords-group">
+        <div class="form-label">Palavras-chave <span class="badge">Obrigatório</span></div>
+        <div class="form-desc" id="ar-keywords-desc">Separe várias opções por vírgula. Ex: oi, olá, bom dia</div>
+        <input type="text" id="ar-keywords" required placeholder="oi, olá, bom dia" />
+      </div>
+      <div class="form-group" id="ar-matchmode-group">
+        <div class="form-label">Combinar</div>
+        <select id="ar-match-mode">
+          <option value="any">Qualquer uma das palavras (OU)</option>
+          <option value="all">Todas as palavras (E)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="ar-case-sensitive" style="width:auto;" /> Diferenciar maiúsculas/minúsculas
+        </label>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Tipo de resposta</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="ar-reply-type" value="fixed" checked onchange="updateAutoReplyType()" style="width:auto;"> ✍️ Texto fixo
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="ar-reply-type" value="ai" onchange="updateAutoReplyType()" style="width:auto;"> 🤖 Gerado pelo bot
+          </label>
+        </div>
+      </div>
+      <div class="form-group" id="ar-fixed-area">
+        <div class="form-label">Texto da resposta</div>
+        <textarea id="ar-reply-text" rows="3" placeholder="Ex: Olá! Em breve alguém da equipe vai te responder 🙂"></textarea>
+      </div>
+      <div class="form-group" id="ar-ai-area" style="display:none;">
+        <div class="form-label">O que o bot deve responder?</div>
+        <div class="form-desc">Descreva como o bot deve responder. Ele vai gerar um texto diferente a cada vez.</div>
+        <textarea id="ar-ai-prompt" rows="3" placeholder="Ex: Responda de forma simpática agradecendo o contato e avisando o horário de atendimento."></textarea>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Onde deve responder?</div>
+        <select id="ar-scope" onchange="updateAutoReplyGroupSelector()">
+          <option value="both">Grupos e conversas diretas</option>
+          <option value="groups">Somente grupos</option>
+          <option value="dms">Somente conversas diretas</option>
+        </select>
+      </div>
+      <div class="form-group" id="ar-group-selector-group" style="display:none;">
+        <div class="form-label">Restringir a grupos específicos <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Deixe todos desmarcados para responder em qualquer grupo.</div>
+        <div id="ar-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+      </div>
+
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">Cooldown (minutos)</div>
+          <div class="form-desc">Tempo mínimo antes de responder de novo na mesma conversa.</div>
+          <input type="number" id="ar-cooldown" min="0" value="10" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Prioridade</div>
+          <div class="form-desc">Regras com prioridade maior são checadas primeiro.</div>
+          <input type="number" id="ar-priority" value="0" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="ar-stop-on-match" checked style="width:auto;" /> Parar de checar outras regras após esta responder
+        </label>
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar regra</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-autoreply')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Criar/Editar regra de comentário do Instagram -->
+<div class="modal-overlay" id="modal-ig-rule">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="ig-rule-modal-title">💬 Nova regra de comentário</div>
+    <form id="ig-rule-form" onsubmit="saveIgRule(event)">
+      <input type="hidden" id="ig-id" />
+      <div class="form-group">
+        <div class="form-label">Nome da regra <span class="badge">Obrigatório</span></div>
+        <input type="text" id="ig-name" required placeholder="Ex: Eu quero" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Quando o comentário...</div>
+        <select id="ig-trigger-type">
+          <option value="contains">Contiver</option>
+          <option value="exact">For exatamente igual</option>
+          <option value="starts_with">Começar com</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Palavras-chave <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">Separe várias opções por vírgula. Ex: eu quero, quero, manda o link</div>
+        <input type="text" id="ig-keywords" required placeholder="eu quero, quero" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Combinar</div>
+        <select id="ig-match-mode">
+          <option value="any">Qualquer uma das palavras (OU)</option>
+          <option value="all">Todas as palavras (E)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+          <input type="checkbox" id="ig-case-sensitive" style="width:auto;" /> Diferenciar maiúsculas/minúsculas
+        </label>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Resposta no Direct <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">Use <code>{group_link}</code> para inserir automaticamente o link do grupo ativo da série escolhida abaixo.</div>
+        <textarea id="ig-reply-text" rows="3" placeholder="Oi! Aqui está o link do nosso grupo de ofertas: {group_link}"></textarea>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Série de grupos <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">De qual série (aba Grupos) pegar o link do grupo ativo no momento do envio.</div>
+        <select id="ig-series-select">
+          <option value="">Selecione uma série...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Media ID do post/reel <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Deixe em branco para valer em qualquer post. Preencha só se quiser restringir a um vídeo específico.</div>
+        <input type="text" id="ig-media-id" placeholder="Ex: 17895695668004550" />
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar regra</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-ig-rule')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Novo token de entrada (webhook) -->
+<div class="modal-overlay" id="modal-webhook-token">
+  <div class="modal">
+    <div class="modal-title">🔑 Novo token de entrada</div>
+    <div id="wt-create-area">
+      <div class="form-group">
+        <div class="form-label">Nome do token <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">Um nome pra você identificar quem vai usar (ex: "CRM Loja", "n8n Pedidos").</div>
+        <input type="text" id="wt-name" placeholder="Ex: Sistema de pedidos" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-primary" onclick="createWebhookToken()">🔑 Gerar token</button>
+        <button class="btn btn-ghost" onclick="closeModal('modal-webhook-token')">Cancelar</button>
+      </div>
+    </div>
+    <div id="wt-created-area" style="display:none;">
+      <div class="hint hint-green">✅ Token criado! Copie agora — ele não será mostrado novamente.</div>
+      <div class="form-group">
+        <input type="text" id="wt-token-value" readonly style="font-family:monospace;font-size:0.82rem;" />
+      </div>
+      <button class="btn btn-blue btn-full" onclick="copyWebhookToken()">📋 Copiar token</button>
+      <div class="modal-actions">
+        <button class="btn btn-ghost btn-full" onclick="closeModal('modal-webhook-token')">Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Criar/Editar assinatura de webhook de saída -->
+<div class="modal-overlay" id="modal-webhook-sub">
+  <div class="modal">
+    <div class="modal-title" id="webhook-sub-modal-title">📡 Nova assinatura de webhook</div>
+    <form id="webhook-sub-form" onsubmit="saveWebhookSub(event)">
+      <input type="hidden" id="ws-id" />
+      <div class="form-group">
+        <div class="form-label">Nome <span class="badge">Obrigatório</span></div>
+        <input type="text" id="ws-name" required placeholder="Ex: Notificar CRM" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">URL de destino <span class="badge">Obrigatório</span></div>
+        <input type="url" id="ws-url" required placeholder="https://meusistema.com/webhook" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Evento</div>
+        <select id="ws-event">
+          <option value="message_received">Nova mensagem recebida</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <div class="form-label">Segredo (HMAC) <span class="badge-opt">Gerado automaticamente</span></div>
+        <div class="form-desc">Usado para assinar o payload (header <code>X-Webhook-Signature</code>) e você validar a autenticidade.</div>
+        <input type="text" id="ws-secret" placeholder="Deixe em branco para gerar automaticamente" style="font-family:monospace;font-size:0.82rem;" />
+      </div>
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar assinatura</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-webhook-sub')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Nova campanha -->
+<div class="modal-overlay" id="modal-campaign">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-title">📢 Nova campanha</div>
+    <div class="form-group">
+      <div class="form-label">Nome da campanha <span class="badge">Obrigatório</span></div>
+      <input type="text" id="camp-name" placeholder="Ex: Promoção de aniversário" />
+    </div>
+
+    <div class="form-group">
+      <div class="form-label">Mensagem <span class="badge">Obrigatório</span></div>
+      <textarea id="camp-message" rows="4" placeholder="Digite a mensagem que será enviada para todos os destinatários..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <div class="form-label">Imagem <span class="badge-opt">Opcional</span></div>
+      <div id="camp-img-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+        <button type="button" class="btn btn-primary btn-sm" id="camp-img-tab-file" onclick="switchImgTab('camp','file')">📁 Enviar arquivo</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="camp-img-tab-url" onclick="switchImgTab('camp','url')">🔗 Usar URL</button>
+      </div>
+      <div id="camp-img-file-area">
+        <input type="file" id="camp-img-file" accept="image/*" onchange="handleImgFile('camp')" style="width:100%;padding:8px;border:1.5px dashed var(--border);border-radius:8px;background:#fafafa;cursor:pointer;" />
+        <div id="camp-img-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+      </div>
+      <div id="camp-img-url-area" style="display:none;">
+        <input type="url" id="camp-img-url" placeholder="https://..." oninput="previewImgUrl('camp')" />
+        <div id="camp-img-url-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+      </div>
+      <input type="hidden" id="camp-img-value" />
+    </div>
+
+    <div class="form-group">
+      <div class="form-label">Destinatários</div>
+      <div style="display:flex;gap:10px;margin-bottom:10px;">
+        <button type="button" id="camp-target-groups-btn" class="btn btn-primary" onclick="switchCampaignTarget('groups')" style="flex:1;">📱 Grupos</button>
+        <button type="button" id="camp-target-contacts-btn" class="btn btn-ghost" onclick="switchCampaignTarget('contacts')" style="flex:1;">👤 Contatos (números)</button>
+      </div>
+
+      <div id="camp-target-groups-area">
+        <div id="camp-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+      </div>
+
+      <div id="camp-target-contacts-area" style="display:none;">
+        <div class="form-group" style="margin-bottom:10px;">
+          <div class="form-label">Fonte dos contatos</div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:6px;">
+            <input type="radio" name="camp-contact-source" value="known_only" checked style="width:auto;" /> Só números que já têm conversa com essa conta (mais seguro)
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+            <input type="radio" name="camp-contact-source" value="any" style="width:auto;" /> Qualquer número da lista (maior risco de banimento)
+          </label>
+        </div>
+        <div class="form-desc">Um número por linha, com DDI e DDD. Ex: 5511999999999</div>
+        <textarea id="camp-contacts" rows="5" placeholder="5511999999999&#10;5511888888888"></textarea>
+      </div>
+    </div>
+
+    <div class="input-row">
+      <div class="form-group">
+        <div class="form-label">Delay mínimo (segundos)</div>
+        <input type="number" id="camp-delay-min" value="8" min="3" />
+      </div>
+      <div class="form-group">
+        <div class="form-label">Delay máximo (segundos)</div>
+        <input type="number" id="camp-delay-max" value="20" min="3" />
+      </div>
+    </div>
+    <div class="hint hint-blue" style="font-size:0.82rem;margin-top:-10px;">
+      💡 O bot espera um tempo aleatório dentro dessa janela entre cada envio, para parecer mais natural e reduzir o risco de bloqueio.
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="createCampaign()">💾 Criar campanha</button>
+      <button class="btn btn-ghost" onclick="closeModal('modal-campaign')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ver mensagem completa -->
+<div id="modal-msg" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;display:none;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;padding:24px;max-height:80vh;overflow-y:auto;position:relative;">
+    <button onclick="document.getElementById('modal-msg').style.display='none'" style="position:absolute;top:12px;right:14px;background:none;border:none;font-size:1.3rem;cursor:pointer;color:var(--muted);">✕</button>
+    <h3 style="margin:0 0 16px;font-size:1rem;">💬 Mensagem enviada</h3>
+    <pre id="modal-msg-text" style="white-space:pre-wrap;font-family:inherit;font-size:0.88rem;line-height:1.6;background:var(--bg);padding:14px;border-radius:10px;margin:0;"></pre>
+    <button onclick="copyMessage()" style="margin-top:14px;width:100%;padding:10px;background:var(--blue);color:#fff;border:none;border-radius:10px;cursor:pointer;font-weight:600;">📋 Copiar mensagem</button>
+  </div>
+</div>
+
+<script>
+// ===== ESTADO GLOBAL =====
+let selectedGroups = [];
+let allGroups = [];
+
+// ===== NAVEGAÇÃO =====
+function showPage(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  setMobileNav(name);
+  if (name === 'products') loadProducts();
+  if (name === 'history') loadHistory();
+  if (name === 'settings') loadSettings();
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'groups') loadGroups();
+  if (name === 'autoreply') loadAutoReplyRules();
+  if (name === 'campaigns') loadCampaigns();
+  if (name === 'webhooks') loadWebhooksPage();
+  if (name === 'instagram') loadInstagramPage();
+}
+
+function setMobileNav(name) {
+  document.querySelectorAll('#mobile-nav button').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('mnav-' + name);
+  if (btn) btn.classList.add('active');
+}
+
+// ===== MODAL MENSAGEM =====
+const _msgs = [];
+function showMessage(idx) {
+  document.getElementById('modal-msg-text').textContent = _msgs[idx] || '';
+  document.getElementById('modal-msg').style.display = 'flex';
+}
+function copyMessage() {
+  const text = document.getElementById('modal-msg-text').textContent;
+  navigator.clipboard.writeText(text).then(() => toast('✅ Copiado!'));
+}
+
+// ===== TOAST =====
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = type === 'ok' ? 'toast-ok' : 'toast-err';
+  el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 3500);
+}
+
+// ===== RECONEXÃO / DESCONEXÃO =====
+async function reconnectWhatsApp() {
+  const btn = document.getElementById('reconnect-btn');
+  btn.textContent = '⏳ Conectando...';
+  btn.disabled = true;
+  await fetch('/api/reconnect', { method: 'POST' });
+  setTimeout(checkStatus, 2000);
+  setTimeout(() => { btn.disabled = false; btn.textContent = '↺ Reconectar'; }, 5000);
+}
+
+async function disconnectWhatsApp() {
+  if (!confirm('Desconectar o WhatsApp completamente? A sessão será removida e você precisará escanear o QR Code novamente para reconectar.')) return;
+  const btn = document.getElementById('btn-disconnect');
+  btn.disabled = true;
+  btn.textContent = '⏳ Desconectando...';
+  await fetch('/api/disconnect', { method: 'POST' });
+  toast('✅ WhatsApp desconectado. Clique em "Conectar WhatsApp" para reconectar.');
+  btn.disabled = false;
+  btn.textContent = '🔌 Desconectar WhatsApp';
+  setTimeout(checkStatus, 1500);
+}
+
+function connectWhatsApp() {
+  fetch('/api/reconnect', { method: 'POST' });
+  toast('📱 Iniciando conexão... Aguarde o QR Code.');
+  setTimeout(checkStatus, 2000);
+}
+
+async function broadcastMessage() {
+  const text = document.getElementById('broadcast-text').value.trim();
+  if (!text) return toast('Digite uma mensagem antes de enviar.', 'err');
+  const btn = document.getElementById('btn-broadcast');
+  const result = document.getElementById('broadcast-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+  result.style.display = 'none';
+  try {
+    const res = await fetch('/api/broadcast', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    const data = await res.json();
+    result.style.display = 'block';
+    if (data.ok) {
+      result.innerHTML = `<div class="hint hint-green">✅ Mensagem enviada para ${data.groups} grupo(s)!</div>`;
+      document.getElementById('broadcast-text').value = '';
+    } else {
+      result.innerHTML = `<div class="hint hint-red">❌ ${data.error}</div>`;
+    }
+  } catch(_) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="hint hint-red">❌ Erro de conexão.</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = '📤 Enviar mensagem para os grupos';
+}
+
+// ===== STATUS =====
+async function checkStatus() {
+  const res = await fetch('/api/status').catch(() => null);
+  if (!res) return;
+  const data = await res.json();
+  const dot = document.getElementById('status-dot');
+  const text = document.getElementById('status-text');
+  const qrCard = document.getElementById('qr-card');
+  const qrBig = document.getElementById('qr-big');
+  dot.className = 'dot ' + data.status;
+  const labels = { connected: 'WhatsApp conectado ✅', qr_pending: 'Aguardando QR Code...', disconnected: 'Desconectado ❌' };
+  text.textContent = labels[data.status] || data.status;
+  document.getElementById('reconnect-btn').style.display = data.status === 'disconnected' ? 'inline-block' : 'none';
+
+  // Botões conectar/desconectar na aba início
+  const btnDisc = document.getElementById('btn-disconnect');
+  const btnConn = document.getElementById('btn-connect');
+  if (btnDisc) btnDisc.style.display = data.status === 'connected' ? 'inline-flex' : 'none';
+  if (btnConn) btnConn.style.display = data.status === 'disconnected' ? 'inline-flex' : 'none';
+
+  if (data.status === 'qr_pending' && data.qr) {
+    qrCard.style.display = 'block';
+    qrBig.src = data.qr;
+  } else {
+    qrCard.style.display = 'none';
+  }
+}
+setInterval(checkStatus, 5000);
+checkStatus();
+
+// ===== DASHBOARD =====
+async function loadDashboard() {
+  const [history, products, settings] = await Promise.all([
+    fetch('/api/history?limit=200').then(r => r.json()).catch(() => []),
+    fetch('/api/products').then(r => r.json()).catch(() => []),
+    fetch('/api/settings').then(r => r.json()).catch(() => ({})),
+  ]);
+  const today = new Date().toISOString().slice(0, 10);
+  const todayPosts = history.filter(h => h.sent_at?.slice(0, 10) === today).length;
+  const activeProducts = products.filter(p => p.active).length;
+  const groupIds = (settings.whatsapp_group_ids || '').split(',').filter(Boolean);
+
+  document.getElementById('stat-today').textContent = todayPosts;
+  document.getElementById('stat-products').textContent = activeProducts;
+  document.getElementById('stat-groups').textContent = groupIds.length;
+  document.getElementById('stat-total').textContent = history.length;
+
+  const recentEl = document.getElementById('dashboard-recent');
+  if (!history.length) {
+    recentEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Nenhuma postagem ainda. Configure os grupos e aguarde o horário programado!</p></div>';
+    return;
+  }
+  const recent = history.slice(0, 5);
+  recent.forEach(h => _msgs.push(h.message_text || ''));
+  const recentOffset = _msgs.length - recent.length;
+  recentEl.innerHTML = recent.map((h, i) => `
+    <div class="history-item">
+      <div class="history-meta">
+        <span style="font-size:0.78rem;color:var(--muted);">📅 ${fmt(h.sent_at)}</span>
+        <span class="tag ${h.status === 'manual' ? 'tag-manual' : 'tag-auto'}">${h.status === 'manual' ? '✋ Manual' : '🤖 Automático'}</span>
+        ${h.product_title ? `<span style="font-size:0.78rem;font-weight:600;">📦 ${h.product_title}</span>` : ''}
+        <button onclick="showMessage(${recentOffset + i})" style="margin-left:auto;padding:3px 10px;font-size:0.75rem;background:var(--blue);color:#fff;border:none;border-radius:10px;cursor:pointer;">👁 Ver</button>
+      </div>
+      <div class="history-text">${(h.message_text || '').slice(0, 120)}${(h.message_text?.length||0) > 120 ? '...' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// ===== GRUPOS =====
+let knownGroups = [];
+let liveGroupsMode = false;
+
+async function loadGroups() {
+  let settings = {};
+  try { settings = await fetch('/api/settings').then(r => r.json()); } catch (_) {}
+  selectedGroups = (settings.whatsapp_group_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  // Tenta a listagem ao vivo primeiro (nomes reais, admin/dono) — cai pro diretório próprio se falhar.
+  try {
+    const res = await fetch('/api/groups');
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Erro ao listar.');
+
+    liveGroupsMode = true;
+    allGroups = data;
+    // Sincroniza em segundo plano com o diretório próprio (não bloqueia a renderização)
+    Promise.all(data.map(g => fetch('/api/known-groups', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ groupId: g.id }),
+    }).then(() => fetch(`/api/known-groups/${encodeURIComponent(g.id)}/nickname`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: g.name }),
+    })).catch(() => {}))).catch(() => {});
+  } catch (err) {
+    liveGroupsMode = false;
+    knownGroups = await fetch('/api/known-groups').then(r => r.json()).catch(() => []);
+    allGroups = knownGroups.map(g => ({ id: g.group_id, name: g.nickname || g.group_id }));
+    // Garante que grupos já salvos em Configurações apareçam aqui mesmo que o diretório
+    // ainda não os tenha "visto" (ex: foram salvos manualmente antes dessa página existir).
+    for (const id of selectedGroups) {
+      if (!allGroups.some(g => g.id === id)) allGroups.push({ id, name: id });
+    }
+  }
+
+  renderGroups();
+  populateGroupSettingsSelect();
+  populateGroupSeriesGroupSelect();
+  loadGroupSeries();
+}
+
+async function tryAutoRefreshGroups() {
+  toast('🔄 Atualizando lista de grupos...');
+  await loadGroups();
+  toast(liveGroupsMode ? '✅ Lista atualizada com dados reais do WhatsApp!' : '⚠️ Listagem ao vivo ainda não funciona — usando o diretório próprio.', liveGroupsMode ? 'ok' : 'err');
+}
+
+async function addKnownGroupManually() {
+  const input = document.getElementById('new-group-id');
+  const groupId = input.value.trim();
+  if (!groupId.endsWith('@g.us')) return toast('ID inválido — precisa terminar com @g.us', 'err');
+
+  const res = await fetch('/api/known-groups', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ groupId }),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  input.value = '';
+  toast('✅ Grupo adicionado ao diretório!');
+  loadGroups();
+}
+
+// ===== MODO DE IDENTIFICAÇÃO (nomear grupos sem depender do getChats quebrado) =====
+let identifyModeActive = false;
+let identifyTimer = null;
+let identifySince = null;
+let identifySeenIds = new Set();
+
+function toggleIdentifyMode() {
+  if (identifyModeActive) stopIdentifyMode();
+  else startIdentifyMode();
+}
+
+function startIdentifyMode() {
+  identifyModeActive = true;
+  identifySince = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  identifySeenIds = new Set();
+  const btn = document.getElementById('btn-identify');
+  btn.textContent = '⏹ Parar identificação';
+  btn.className = 'btn btn-red';
+  document.getElementById('identify-panel').style.display = 'block';
+  document.getElementById('identify-panel').innerHTML = '<div class="hint">⏳ Aguardando... mande uma mensagem em um grupo pelo celular agora.</div>';
+  pollIdentify();
+  identifyTimer = setInterval(pollIdentify, 2500);
+}
+
+function stopIdentifyMode() {
+  identifyModeActive = false;
+  clearInterval(identifyTimer);
+  const btn = document.getElementById('btn-identify');
+  btn.textContent = '🔍 Iniciar identificação';
+  btn.className = 'btn btn-blue';
+  document.getElementById('identify-panel').style.display = 'none';
+}
+
+async function pollIdentify() {
+  if (!identifyModeActive) return;
+  const groups = await fetch('/api/known-groups').then(r => r.json()).catch(() => []);
+  groups.filter(g => g.last_seen_at >= identifySince).forEach(g => identifySeenIds.add(g.group_id));
+  const toShow = groups.filter(g => identifySeenIds.has(g.group_id));
+
+  const panel = document.getElementById('identify-panel');
+  if (!toShow.length) {
+    panel.innerHTML = '<div class="hint">⏳ Aguardando... mande uma mensagem em um grupo pelo celular agora.</div>';
+    return;
+  }
+  panel.innerHTML = toShow.map(g => {
+    const safeId = g.group_id.replace(/[^a-zA-Z0-9]/g, '');
+    return `
+      <div class="input-row" style="margin-bottom:8px;align-items:center;">
+        <span style="font-size:0.78rem;color:var(--green);white-space:nowrap;">🟢 detectado agora:</span>
+        <input type="text" value="${g.nickname || ''}" placeholder="Nome desse grupo..." id="identify-input-${safeId}"
+          onkeydown="if(event.key==='Enter'){identifySave('${g.group_id}', document.getElementById('identify-input-${safeId}').value)}" />
+        <button class="btn btn-primary btn-sm" onclick="identifySave('${g.group_id}', document.getElementById('identify-input-${safeId}').value)">💾</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function identifySave(groupId, nickname) {
+  if (!nickname.trim()) return toast('Digite um nome antes de salvar.', 'err');
+  await fetch(`/api/known-groups/${encodeURIComponent(groupId)}/nickname`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nickname.trim() }),
+  });
+  toast(`✅ "${nickname.trim()}" salvo!`);
+  loadGroups();
+}
+
+async function editGroupNickname(groupId) {
+  const known = knownGroups.find(k => k.group_id === groupId);
+  const nickname = prompt('Apelido para esse grupo:', known?.nickname || '');
+  if (nickname === null) return;
+
+  await fetch(`/api/known-groups/${encodeURIComponent(groupId)}/nickname`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nickname: nickname.trim() }),
+  });
+  toast('✅ Apelido salvo!');
+  loadGroups();
+}
+
+function renderGroups() {
+  const listEl = document.getElementById('group-list');
+  const counter = document.getElementById('groups-counter');
+
+  if (!allGroups.length) {
+    listEl.innerHTML = liveGroupsMode
+      ? '<div class="empty-state"><div class="empty-icon">💬</div><p>Nenhum grupo encontrado. Você precisa fazer parte de pelo menos um grupo no WhatsApp.</p></div>'
+      : '<div class="empty-state"><div class="empty-icon">💬</div><p>Nenhum grupo no diretório ainda.<br>Mande uma mensagem em um grupo pelo celular, ou adicione pelo ID abaixo.</p></div>';
+    counter.textContent = 'Nenhum grupo selecionado';
+    return;
+  }
+
+  counter.textContent = `${selectedGroups.length} grupo(s) selecionado(s) para receber ofertas`;
+  counter.style.color = 'var(--muted)';
+
+  if (liveGroupsMode) {
+    renderLiveGroups(listEl);
+  } else {
+    renderKnownGroups(listEl);
+  }
+}
+
+function renderLiveGroups(listEl) {
+  const admins = allGroups.filter(g => g.isAdmin);
+  const members = allGroups.filter(g => !g.isAdmin);
+
+  function renderItem(g) {
+    const isSel = selectedGroups.includes(g.id);
+    return `
+      <div class="group-item ${isSel ? 'selected' : ''}" onclick="toggleGroup('${g.id}')">
+        <div class="group-check">${isSel ? '✓' : ''}</div>
+        <div class="group-info">
+          <div class="group-name">${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOwner ? ' <span class="tag" style="background:#fff3e0;color:var(--orange);">🔑 Criado por você</span>' : ''}</div>
+          <div class="group-meta">${g.participants} participantes</div>
+        </div>
+        ${isSel ? '<span class="group-count">✓ Selecionado</span>' : ''}
+      </div>
+    `;
+  }
+
+  let html = '';
+  if (admins.length) {
+    html += `
+      <div style="font-size:0.82rem;font-weight:700;color:var(--orange);margin:12px 0 8px;display:flex;align-items:center;gap:6px;">
+        👑 GRUPOS QUE VOCÊ É ADMINISTRADOR <span style="background:#fff3e0;color:var(--orange);padding:1px 8px;border-radius:10px;font-size:0.75rem;">${admins.length}</span>
+      </div>
+      ${admins.map(renderItem).join('')}
+    `;
+  }
+  if (members.length) {
+    html += `
+      <div style="font-size:0.82rem;font-weight:700;color:var(--muted);margin:20px 0 8px;display:flex;align-items:center;gap:6px;">
+        💬 GRUPOS QUE VOCÊ É PARTICIPANTE <span style="background:#eee;color:#666;padding:1px 8px;border-radius:10px;font-size:0.75rem;">${members.length}</span>
+      </div>
+      <div class="hint hint-red" style="margin-bottom:10px;font-size:0.8rem;">⚠️ Nesses grupos você não é admin. Moderação (apagar mensagem/remover participante) não vai funcionar até você virar admin.</div>
+      ${members.map(renderItem).join('')}
+    `;
+  }
+  listEl.innerHTML = html;
+}
+
+function renderKnownGroups(listEl) {
+  listEl.innerHTML = allGroups.map(g => {
+    const isSel = selectedGroups.includes(g.id);
+    const known = knownGroups.find(k => k.group_id === g.id);
+    const sourceLabel = { message: '💬 visto por mensagem', group_join: '🎉 visto na entrada de alguém', group_leave: '👋 visto na saída de alguém', manual: '⌨️ adicionado manualmente' }[known?.source] || '';
+    const meta = known ? `${sourceLabel} · ${known.message_count} msg · última atividade ${fmt(known.last_seen_at)}` : '';
+    return `
+      <div class="group-item ${isSel ? 'selected' : ''}" onclick="toggleGroup('${g.id}')">
+        <div class="group-check">${isSel ? '✓' : ''}</div>
+        <div class="group-info">
+          <div class="group-name">💬 ${known?.nickname ? known.nickname : '<span style="color:var(--muted);font-weight:400;">(sem apelido)</span>'}</div>
+          <div class="group-meta" style="font-family:monospace;">${g.id}</div>
+          <div class="group-meta">${meta}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); editGroupNickname('${g.id}')">✏️</button>
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleGroup(id) {
+  if (selectedGroups.includes(id)) {
+    selectedGroups = selectedGroups.filter(g => g !== id);
+  } else {
+    selectedGroups.push(id);
+  }
+  renderGroups();
+}
+
+async function saveGroups() {
+  await fetch('/api/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ whatsapp_group_ids: selectedGroups.join(',') }),
+  });
+  toast(`✅ ${selectedGroups.length} grupo(s) salvos!`);
+  loadDashboard();
+}
+
+// ===== PRODUTOS =====
+async function loadProducts() {
+  const products = await fetch('/api/products').then(r => r.json()).catch(() => []);
+  const grid = document.getElementById('product-grid');
+  if (!products.length) {
+    grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">📦</div><p>Nenhum produto cadastrado ainda.<br>Importe um produto do ML ou adicione manualmente.</p></div>';
+    return;
+  }
+  grid.innerHTML = products.map(p => `
+    <div class="product-card ${p.active ? '' : 'inactive'}">
+      ${p.image_url
+        ? `<img class="product-img" src="${p.image_url}" onerror="this.parentNode.querySelector('.product-img-placeholder').style.display='flex';this.style.display='none'" /><div class="product-img-placeholder" style="display:none">📦</div>`
+        : `<div class="product-img-placeholder">📦</div>`}
+      <div class="product-body">
+        <div class="product-title">${p.title}</div>
+        ${p.price ? `
+        <div class="product-price">
+          <span class="price-current">R$ ${Number(p.price).toFixed(2)}</span>
+          ${p.original_price ? `<span class="price-original">R$ ${Number(p.original_price).toFixed(2)}</span>` : ''}
+          ${p.discount_percent ? `<span class="discount-badge">-${p.discount_percent}%</span>` : ''}
+        </div>` : ''}
+        <div class="product-actions">
+          <button class="btn btn-green btn-sm" onclick="manualPost(${p.id})">▶ Postar agora</button>
+          <button class="btn btn-blue btn-sm" onclick="editProduct(${p.id})">✏️ Editar</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleProduct(${p.id}, ${p.active ? 0 : 1})">${p.active ? '⏸ Pausar' : '▶ Ativar'}</button>
+          <button class="btn btn-red btn-sm" onclick="deleteProduct(${p.id})">🗑️</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function autoPost() {
+  const btn = document.getElementById('btn-auto-post');
+  const result = document.getElementById('auto-post-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Buscando produto no ML...';
+  result.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/post/auto', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      result.style.display = 'block';
+      result.innerHTML = `
+        <div class="hint ${data.warning ? 'hint-red' : 'hint-green'}">
+          <strong>${data.warning ? '⚠️ Postado com problema' : '✅ Postado com sucesso!'}</strong><br>
+          <strong>Produto:</strong> ${data.product}<br>
+          ${data.discount ? `<strong>Desconto:</strong> ${data.discount}%<br>` : ''}
+          ${data.warning ? `<strong>${data.warning}</strong><br>` : ''}
+          <strong>Enviado para ${data.groupsSent ?? '?'} grupo(s)${data.groupsFailed ? `, falhou em ${data.groupsFailed}` : ''}.</strong><br>
+          ${data.usedFallback ? `<div style="margin-top:6px;font-size:0.85rem;">🔁 O Mercado Livre não respondeu agora — foi usado um produto já cadastrado como alternativa.</div>` : ''}
+          <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.82rem;">Ver mensagem enviada</summary>
+          <pre style="white-space:pre-wrap;font-size:0.8rem;margin-top:6px;">${data.text}</pre></details>
+        </div>`;
+      loadDashboard();
+    } else {
+      result.style.display = 'block';
+      result.innerHTML = `<div class="hint hint-red">❌ ${data.error}</div>`;
+    }
+  } catch (err) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="hint hint-red">❌ Erro de conexão.</div>`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🛒 Buscar produto e postar agora';
+}
+
+async function manualPost(id) {
+  if (!confirm('Enviar esse produto agora para os grupos selecionados?')) return;
+  toast('Enviando...');
+  const res = await fetch(`/api/post/${id}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.ok) toast('✅ Post enviado com sucesso!');
+  else toast('❌ ' + data.error, 'err');
+}
+
+async function toggleProduct(id, active) {
+  await fetch(`/api/products/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadProducts();
+  toast(active ? '✅ Produto ativado!' : '⏸ Produto pausado.');
+}
+
+async function deleteProduct(id) {
+  if (!confirm('Tem certeza que deseja excluir este produto?')) return;
+  try {
+    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      toast('❌ Erro ao excluir: ' + (data.error || res.status), 'err');
+      return;
+    }
+    loadProducts();
+    toast('🗑️ Produto excluído.');
+  } catch (err) {
+    toast('❌ Erro de conexão ao excluir.', 'err');
+  }
+}
+
+// editProduct redefinido mais abaixo com suporte a imagem
+
+async function saveEditProduct(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  const res = await fetch(`/api/products/${data.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const r = await res.json();
+  if (r.error) return toast('❌ ' + r.error, 'err');
+  closeModal('modal-edit');
+  loadProducts();
+  toast('✅ Produto atualizado!');
+}
+
+// ===== DELETAR TODOS =====
+async function deleteAllProducts() {
+  const products = await fetch('/api/products').then(r => r.json()).catch(() => []);
+  if (!products.length) return toast('Nenhum produto para apagar.', 'err');
+  if (!confirm(`Apagar todos os ${products.length} produtos? Esta ação não pode ser desfeita.`)) return;
+
+  const btn = document.getElementById('btn-delete-all');
+  btn.disabled = true;
+  btn.textContent = '⏳ Apagando...';
+
+  let deleted = 0;
+  for (const p of products) {
+    try {
+      await fetch(`/api/products/${p.id}`, { method: 'DELETE' });
+      deleted++;
+    } catch (_) {}
+  }
+
+  btn.disabled = false;
+  btn.textContent = '🗑️ Apagar todos';
+  loadProducts();
+  toast(`✅ ${deleted} produto(s) apagado(s).`);
+}
+
+// importProduct, addProductManual, editProduct redefinidos mais abaixo com suporte a imagem
+
+// ===== LIMPAR HISTÓRICO =====
+async function clearHistory() {
+  if (!confirm('Apagar todo o histórico de postagens? Esta ação não pode ser desfeita.')) return;
+  const res = await fetch('/api/history', { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) { toast('🗑️ Histórico limpo!'); loadHistory(); }
+  else toast('❌ ' + data.error, 'err');
+}
+
+// ===== HISTÓRICO =====
+async function loadHistory() {
+  const history = await fetch('/api/history?limit=100').then(r => r.json()).catch(() => []);
+  const el = document.getElementById('history-list');
+  if (!history.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Nenhuma postagem ainda.</p></div>';
+    return;
+  }
+  const histOffset = _msgs.length;
+  history.forEach(h => _msgs.push(h.message_text || ''));
+  el.innerHTML = history.map((h, i) => `
+    <div class="history-item">
+      <div class="history-meta">
+        <span style="font-size:0.78rem;color:var(--muted);">📅 ${fmt(h.sent_at)}</span>
+        <span class="tag ${h.status === 'manual' ? 'tag-manual' : 'tag-auto'}">${h.status === 'manual' ? '✋ Manual' : '🤖 Automático'}</span>
+        ${h.product_title ? `<span style="font-size:0.78rem;font-weight:600;">📦 ${h.product_title}</span>` : ''}
+        <button onclick="showMessage(${histOffset + i})" style="margin-left:auto;padding:3px 10px;font-size:0.75rem;background:var(--blue);color:#fff;border:none;border-radius:10px;cursor:pointer;">👁 Ver</button>
+      </div>
+      <div class="history-text">${(h.message_text || '').slice(0, 120)}${(h.message_text?.length||0) > 120 ? '...' : ''}</div>
+    </div>
+  `).join('');
+}
+
+// ===== SCHEDULER =====
+let schedulerTimes = [];
+
+function updateCron() {
+  const activeDays = Array.from(document.querySelectorAll('#day-buttons .day-btn.active')).map(b => b.dataset.day);
+  const times = schedulerTimes.slice().sort((a, b) => a.localeCompare(b));
+
+  // Salva post_times e post_days (campos ocultos)
+  document.getElementById('post-times-hidden').value = times.join(',');
+  document.getElementById('post-days-hidden').value  = activeDays.length === 7 ? '*' : activeDays.join(',');
+
+  // Preview legível
+  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  if (!times.length || !activeDays.length) {
+    document.getElementById('cron-preview-text').textContent = 'Nenhum horário configurado';
+    return;
+  }
+  const daysText = activeDays.length === 7 ? 'todos os dias' : activeDays.map(d => dayNames[d]).join(', ');
+  document.getElementById('cron-preview-text').textContent = `${daysText} às ${times.join(', ')}`;
+}
+
+function addTime() {
+  const input = document.getElementById('new-time-input');
+  const val = input.value;
+  if (!val || schedulerTimes.includes(val)) return;
+  schedulerTimes.push(val);
+  renderTimes();
+  updateCron();
+}
+
+function removeTime(t) {
+  schedulerTimes = schedulerTimes.filter(x => x !== t);
+  renderTimes();
+  updateCron();
+}
+
+function renderTimes() {
+  const list = document.getElementById('times-list');
+  if (!schedulerTimes.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhum horário adicionado ainda.</span>';
+    return;
+  }
+  const sorted = schedulerTimes.slice().sort((a,b) => a.localeCompare(b));
+  list.innerHTML = sorted.map(t => `
+    <div class="time-chip">
+      ⏰ ${t}
+      <button type="button" class="remove-time" onclick="removeTime('${t}')" title="Remover">✕</button>
+    </div>
+  `).join('');
+}
+
+function selectDays(preset) {
+  const btns = document.querySelectorAll('#day-buttons .day-btn');
+  btns.forEach(b => {
+    const d = parseInt(b.dataset.day);
+    if (preset === 'all') b.classList.add('active');
+    else if (preset === 'weekdays') b.classList.toggle('active', d >= 1 && d <= 5);
+    else if (preset === 'weekend') b.classList.toggle('active', d === 0 || d === 6);
+  });
+  updateCron();
+}
+
+function setPreset(timesStr) {
+  schedulerTimes = timesStr.split(',');
+  renderTimes();
+  updateCron();
+}
+
+function parseSettingsToUI(settings) {
+  // Carrega post_times (HH:MM,HH:MM,...)
+  if (settings.post_times) {
+    schedulerTimes = settings.post_times.split(',').map(t => t.trim()).filter(Boolean);
+    renderTimes();
+  }
+  // Carrega post_days
+  const daysPart = settings.post_days || '*';
+  const btns = document.querySelectorAll('#day-buttons .day-btn');
+  if (daysPart === '*') {
+    btns.forEach(b => b.classList.add('active'));
+  } else {
+    btns.forEach(b => b.classList.remove('active'));
+    daysPart.split(',').map(Number).forEach(d => {
+      const btn = document.querySelector(`#day-buttons .day-btn[data-day="${d}"]`);
+      if (btn) btn.classList.add('active');
+    });
+  }
+  updateCron();
+}
+
+// Toggle day on click (settings page only)
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('#day-buttons .day-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.classList.toggle('active');
+      updateCron();
+    });
+  });
+  setPreset('09:00,12:00,18:00'); // default
+});
+
+// ===== CONFIGURAÇÕES =====
+async function loadSettings() {
+  const s = await fetch('/api/settings').then(r => r.json()).catch(() => ({}));
+  const form = document.getElementById('settings-form');
+  parseSettingsToUI(s);
+  for (const [k, v] of Object.entries(s)) {
+    if (k === 'post_times' || k === 'post_days') continue;
+    if (form.elements[k]) form.elements[k].value = v ?? '';
+  }
+  const hasKey = s.anthropic_api_key && s.anthropic_api_key !== 'sua_chave_aqui';
+  document.getElementById('no-api-warning').style.display = hasKey ? 'none' : 'block';
+}
+
+async function saveSettings(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  toast('✅ Configurações salvas com sucesso!');
+}
+
+// ===== MODAL =====
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+
+// ===== UTILS =====
+function fmt(str) {
+  if (!str) return '–';
+  return new Date(str).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+// ===== ML AFFILIATE SESSION =====
+function checkMaxPosts(val) {
+  const w = document.getElementById('max-posts-warning');
+  if (w) w.style.display = val && parseInt(val) > 8 ? 'block' : 'none';
+}
+
+async function checkMlAffiliateStatus() {
+  try {
+    const r = await fetch('/api/ml-affiliate/status').then(r => r.json());
+    const el = document.getElementById('ml-affiliate-status');
+    const btn = document.getElementById('btn-ml-affiliate');
+    const btnDisc = document.getElementById('btn-ml-disconnect');
+    if (!el) return;
+    if (r.ready) {
+      el.innerHTML = '<span style="color:var(--green)">✅ Sessão ativa — o bot está gerando links meli.la automaticamente!</span>';
+      if (btn) btn.textContent = '🔄 Trocar conta de afiliado';
+      if (btnDisc) btnDisc.style.display = 'inline-flex';
+    } else {
+      el.innerHTML = '<span style="color:var(--orange)">⚠️ Sessão não configurada — o bot usa links com parâmetros de rastreamento (sem meli.la).</span>';
+      if (btnDisc) btnDisc.style.display = 'none';
+    }
+  } catch (_) {}
+}
+
+async function disconnectMlAffiliate() {
+  if (!confirm('Desconectar a conta de afiliados? O bot deixará de gerar links meli.la até você conectar novamente.')) return;
+  const res = await fetch('/api/ml-affiliate/session', { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) { toast('✅ Afiliado desconectado. Conecte uma nova conta quando quiser.'); checkMlAffiliateStatus(); }
+  else toast('❌ ' + data.error, 'err');
+}
+
+async function setupMlAffiliate() {
+  const btn = document.getElementById('btn-ml-affiliate');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Abrindo navegador...';
+  try {
+    await fetch('/api/ml-affiliate/setup', { method: 'POST' });
+    toast('🌐 Navegador aberto! Faça login no Mercado Livre na janela que apareceu. Aguarde a confirmação.');
+    btn.innerHTML = '⏳ Aguardando login...';
+    // Fica verificando a cada 5s até a sessão estar pronta
+    const interval = setInterval(async () => {
+      const r = await fetch('/api/ml-affiliate/status').then(r => r.json()).catch(() => ({}));
+      if (r.ready) {
+        clearInterval(interval);
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Reconectar Afiliados ML';
+        toast('✅ Sessão ML configurada! O bot agora gera links meli.la automaticamente.', 'ok');
+        checkMlAffiliateStatus();
+      }
+    }, 5000);
+    // Timeout de 5 minutos
+    setTimeout(() => { clearInterval(interval); btn.disabled = false; btn.innerHTML = '🔗 Conectar Afiliados ML'; }, 300000);
+  } catch (err) {
+    toast('❌ Erro: ' + err.message, 'err');
+    btn.disabled = false;
+    btn.innerHTML = '🔗 Conectar Afiliados ML (gerar meli.la)';
+  }
+}
+
+// Verifica status do ML Affiliate ao carregar a página de configurações
+document.addEventListener('DOMContentLoaded', () => {
+  checkMlAffiliateStatus();
+  initBroadcastGroupSelector();
+  loadScheduledMsgs();
+  // Sched modal day buttons
+  document.querySelectorAll('#sched-day-buttons .day-btn').forEach(btn => {
+    btn.addEventListener('click', () => btn.classList.toggle('active'));
+  });
+});
+
+// ===== IMAGE UPLOAD HELPERS =====
+const _imgValues = {};
+
+function switchImgTab(prefix, tab) {
+  const fileArea = document.getElementById(`${prefix}-img-file-area`);
+  const urlArea = document.getElementById(`${prefix}-img-url-area`);
+  const tabFile = document.getElementById(`${prefix}-img-tab-file`);
+  const tabUrl = document.getElementById(`${prefix}-img-tab-url`);
+  if (tab === 'file') {
+    fileArea.style.display = '';
+    urlArea.style.display = 'none';
+    tabFile.className = 'btn btn-primary btn-sm';
+    tabUrl.className = 'btn btn-ghost btn-sm';
+  } else {
+    fileArea.style.display = 'none';
+    urlArea.style.display = '';
+    tabFile.className = 'btn btn-ghost btn-sm';
+    tabUrl.className = 'btn btn-primary btn-sm';
+  }
+}
+
+function handleImgFile(prefix) {
+  const fileInput = document.getElementById(`${prefix}-img-file`);
+  const previewEl = document.getElementById(`${prefix}-img-preview`);
+  const file = fileInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    _imgValues[prefix] = e.target.result;
+    previewEl.style.display = 'block';
+    previewEl.innerHTML = `<img src="${e.target.result}" style="max-height:120px;max-width:100%;border-radius:8px;border:2px solid var(--border);" />
+      <div style="font-size:0.78rem;color:var(--green);margin-top:4px;">✅ Imagem carregada</div>`;
+    // Also set hidden field if exists
+    const hidden = document.getElementById(`${prefix}-img-value`);
+    if (hidden) hidden.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function previewImgUrl(prefix) {
+  const urlInput = document.getElementById(`${prefix}-img-url`);
+  const previewEl = document.getElementById(`${prefix}-img-url-preview`);
+  const url = urlInput.value.trim();
+  _imgValues[prefix] = url;
+  const hidden = document.getElementById(`${prefix}-img-value`);
+  if (hidden) hidden.value = url;
+  if (url) {
+    previewEl.style.display = 'block';
+    previewEl.innerHTML = `<img src="${url}" style="max-height:120px;max-width:100%;border-radius:8px;border:2px solid var(--border);" onerror="this.parentNode.innerHTML='<span style=color:var(--red)>❌ URL inválida ou imagem inacessível</span>'" />`;
+  } else {
+    previewEl.style.display = 'none';
+  }
+}
+
+function getImgValue(prefix) {
+  // Check hidden field first (add/edit), then _imgValues
+  const hidden = document.getElementById(`${prefix}-img-value`);
+  if (hidden && hidden.value) return hidden.value;
+  // For import: check active tab
+  const fileArea = document.getElementById(`${prefix}-img-file-area`);
+  if (fileArea && fileArea.style.display !== 'none') {
+    return _imgValues[prefix] || '';
+  }
+  const urlInput = document.getElementById(`${prefix}-img-url`);
+  return urlInput ? urlInput.value.trim() : '';
+}
+
+function resetImgWidget(prefix) {
+  _imgValues[prefix] = '';
+  const fileInput = document.getElementById(`${prefix}-img-file`);
+  if (fileInput) fileInput.value = '';
+  const urlInput = document.getElementById(`${prefix}-img-url`);
+  if (urlInput) urlInput.value = '';
+  const hidden = document.getElementById(`${prefix}-img-value`);
+  if (hidden) hidden.value = '';
+  const prev1 = document.getElementById(`${prefix}-img-preview`);
+  if (prev1) { prev1.style.display = 'none'; prev1.innerHTML = ''; }
+  const prev2 = document.getElementById(`${prefix}-img-url-preview`);
+  if (prev2) { prev2.style.display = 'none'; prev2.innerHTML = ''; }
+  switchImgTab(prefix, 'file');
+}
+
+// ===== MSG TABS =====
+let currentMsgType = 'manual';
+let broadcastSelectedGroups = [];
+
+function showMsgTab(tab, btn) {
+  document.getElementById('msg-panel-now').style.display = tab === 'now' ? '' : 'none';
+  document.getElementById('msg-panel-sched').style.display = tab === 'sched' ? '' : 'none';
+  document.querySelectorAll('#msg-tab-now, #msg-tab-sched').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (tab === 'sched') loadScheduledMsgs();
+}
+
+function switchMsgType(type) {
+  currentMsgType = type;
+  document.getElementById('msg-manual-area').style.display = type === 'manual' ? '' : 'none';
+  document.getElementById('msg-ai-area').style.display = type === 'ai' ? '' : 'none';
+  document.getElementById('msg-type-manual').className = type === 'manual' ? 'btn btn-primary' : 'btn btn-ghost';
+  document.getElementById('msg-type-ai').className = type === 'ai' ? 'btn btn-primary' : 'btn btn-ghost';
+  document.getElementById('msg-ai-preview').style.display = 'none';
+}
+
+async function initBroadcastGroupSelector() {
+  const el = document.getElementById('broadcast-group-selector');
+  if (!el) return;
+  try {
+    const settings = await fetch('/api/settings').then(r => r.json()).catch(() => ({}));
+    const saved = (settings.whatsapp_group_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    broadcastSelectedGroups = [...saved];
+    // Try to get group names
+    let groups = [];
+    try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+    renderBroadcastGroupSelector(groups, saved);
+  } catch (_) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">⚠️ Conecte o WhatsApp para selecionar grupos</span>';
+  }
+}
+
+function renderBroadcastGroupSelector(groups, preselected) {
+  const el = document.getElementById('broadcast-group-selector');
+  if (!groups.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhum grupo disponível. Conecte o WhatsApp e selecione grupos.</span>';
+    return;
+  }
+  broadcastSelectedGroups = preselected.filter(id => groups.some(g => g.id === id));
+  el.innerHTML = groups.map(g => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;padding:4px 0;">
+      <input type="checkbox" value="${g.id}" ${broadcastSelectedGroups.includes(g.id) ? 'checked' : ''}
+        onchange="toggleBroadcastGroup('${g.id}',this.checked)" style="width:auto;cursor:pointer;" />
+      ${g.isAdmin ? '👑' : '💬'} ${g.name} <span style="color:var(--muted);font-size:0.75rem;">(${g.participants})</span>
+    </label>
+  `).join('');
+}
+
+function toggleBroadcastGroup(id, checked) {
+  if (checked) { if (!broadcastSelectedGroups.includes(id)) broadcastSelectedGroups.push(id); }
+  else broadcastSelectedGroups = broadcastSelectedGroups.filter(g => g !== id);
+}
+
+async function generatePreview(promptText, targetEl, btnEl) {
+  if (!promptText) return toast('Digite o tema da mensagem primeiro.', 'err');
+  const origText = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.innerHTML = '<span class="spinner" style="border-top-color:var(--blue);border-color:rgba(0,0,0,0.1);"></span> Gerando...';
+  try {
+    const res = await fetch('/api/generate-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: promptText }),
+    });
+    const data = await res.json();
+    if (data.ok && data.text) {
+      targetEl.style.display = 'block';
+      targetEl.innerHTML = `
+        <div style="background:#f0faf4;border:1.5px solid var(--green);border-radius:10px;padding:12px 14px;">
+          <div style="font-size:0.75rem;font-weight:700;color:var(--green);margin-bottom:6px;">👁 Pré-visualização da mensagem</div>
+          <div style="font-size:0.9rem;line-height:1.6;white-space:pre-wrap;">${data.text}</div>
+          <button type="button" onclick="this.closest('div').parentNode.style.display='none'" style="margin-top:8px;font-size:0.78rem;background:none;border:none;color:var(--muted);cursor:pointer;">✕ Fechar</button>
+        </div>`;
+    } else {
+      toast('❌ ' + (data.error || 'Erro ao gerar mensagem.'), 'err');
+    }
+  } catch (_) {
+    toast('❌ Erro de conexão.', 'err');
+  }
+  btnEl.disabled = false;
+  btnEl.textContent = origText;
+}
+
+async function previewAiMessage() {
+  const prompt = document.getElementById('broadcast-ai-prompt').value.trim();
+  const targetEl = document.getElementById('msg-ai-preview');
+  const btnEl = document.getElementById('btn-preview-ai');
+  await generatePreview(prompt, targetEl, btnEl);
+}
+
+async function previewSchedMessage() {
+  const prompt = document.getElementById('sched-prompt').value.trim();
+  const targetEl = document.getElementById('sched-msg-preview');
+  const btnEl = document.getElementById('btn-preview-sched');
+  await generatePreview(prompt, targetEl, btnEl);
+}
+
+async function broadcastCustomMessage() {
+  const btn = document.getElementById('btn-broadcast');
+  const result = document.getElementById('broadcast-result');
+  result.style.display = 'none';
+
+  let text = '';
+  let type = 'manual';
+  let prompt = '';
+
+  if (currentMsgType === 'manual') {
+    text = document.getElementById('broadcast-text').value.trim();
+    if (!text) return toast('Digite uma mensagem antes de enviar.', 'err');
+  } else {
+    prompt = document.getElementById('broadcast-ai-prompt').value.trim();
+    if (!prompt) return toast('Descreva o que o bot deve escrever.', 'err');
+    type = 'ai';
+  }
+
+  if (!broadcastSelectedGroups.length) return toast('Selecione pelo menos um grupo.', 'err');
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Enviando...';
+
+  try {
+    const res = await fetch('/api/broadcast/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, type, prompt, groupIds: broadcastSelectedGroups }),
+    });
+    const data = await res.json();
+    result.style.display = 'block';
+    if (data.ok) {
+      result.innerHTML = `<div class="hint hint-green">✅ Mensagem enviada para ${data.groups} grupo(s)!${data.text !== text ? `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:0.82rem;">Ver mensagem gerada</summary><pre style="white-space:pre-wrap;font-size:0.82rem;margin-top:6px;">${data.text}</pre></details>` : ''}</div>`;
+      if (currentMsgType === 'manual') document.getElementById('broadcast-text').value = '';
+      document.getElementById('msg-ai-preview').style.display = 'none';
+    } else {
+      result.innerHTML = `<div class="hint hint-red">❌ ${data.error}</div>`;
+    }
+  } catch (_) {
+    result.style.display = 'block';
+    result.innerHTML = `<div class="hint hint-red">❌ Erro de conexão.</div>`;
+  }
+  btn.disabled = false;
+  btn.textContent = '📤 Enviar mensagem agora';
+}
+
+// Keep old broadcastMessage for compatibility
+async function broadcastMessage() { await broadcastCustomMessage(); }
+
+// ===== SCHEDULED MESSAGES =====
+let schedSpecialDates = [];
+
+async function loadScheduledMsgs() {
+  const el = document.getElementById('scheduled-msgs-list');
+  if (!el) return;
+  const msgs = await fetch('/api/scheduled-messages').then(r => r.json()).catch(() => []);
+  if (!msgs.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">📅</div><p>Nenhuma mensagem agendada ainda.<br>Clique em "Nova mensagem agendada" para começar.</p></div>';
+    return;
+  }
+  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  el.innerHTML = msgs.map(m => {
+    const days = m.days === '*' ? 'Todos os dias' : m.days.split(',').map(d => dayNames[parseInt(d)]).join(', ');
+    const timeRange = m.time_end && m.time_end !== m.time_start ? `${m.time_start}–${m.time_end}` : m.time_start;
+    const preview = m.type === 'ai' ? `🤖 ${m.ai_prompt?.slice(0,60) || ''}...` : (m.message_text?.slice(0,80) || '');
+    return `
+      <div class="sched-msg-card ${m.active ? '' : 'inactive'}">
+        <div class="sched-msg-info">
+          <div class="sched-msg-name">${m.active ? '🟢' : '⏸️'} ${m.name}</div>
+          <div class="sched-msg-meta">
+            <span>📅 ${days}</span>
+            <span>⏰ ${timeRange}</span>
+          </div>
+          <div style="font-size:0.82rem;color:#555;margin-top:6px;">${preview}</div>
+        </div>
+        <div class="sched-msg-actions">
+          <button class="btn btn-ghost btn-sm" onclick="editScheduledMsg(${m.id})">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="toggleScheduledMsg(${m.id}, ${m.active ? 0 : 1})">${m.active ? '⏸' : '▶'}</button>
+          <button class="btn btn-red btn-sm" onclick="deleteScheduledMsg(${m.id})">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadSchedGroupSelector() {
+  const el = document.getElementById('sched-group-selector');
+  let groups = [];
+  try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+  if (!groups.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Conecte o WhatsApp para selecionar grupos</span>';
+    return;
+  }
+  el.innerHTML = groups.map(g => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+      <input type="checkbox" value="${g.id}" class="sched-group-cb" style="width:auto;cursor:pointer;" />
+      ${g.isAdmin ? '👑' : '💬'} ${g.name} <span style="color:var(--muted);font-size:0.75rem;">(${g.participants})</span>
+    </label>
+  `).join('');
+}
+
+function openNewScheduledMsg() {
+  schedSpecialDates = [];
+  document.getElementById('scheduled-msg-modal-title').textContent = '📅 Nova mensagem agendada';
+  document.getElementById('sched-id').value = '';
+  document.getElementById('sched-name').value = '';
+  document.querySelector('[name=sched-type][value=fixed]').checked = true;
+  document.getElementById('sched-message').value = '';
+  document.getElementById('sched-prompt').value = '';
+  document.getElementById('sched-time-start').value = '08:00';
+  document.getElementById('sched-time-end').value = '';
+  document.querySelectorAll('#sched-day-buttons .day-btn').forEach(b => b.classList.add('active'));
+  updateSchedType();
+  renderSpecialDates();
+  loadSchedGroupSelector();
+  openModal('modal-scheduled-msg');
+}
+
+async function editScheduledMsg(id) {
+  const msg = await fetch(`/api/scheduled-messages/${id}`).then(r => r.json());
+  schedSpecialDates = [];
+  try { schedSpecialDates = JSON.parse(msg.special_dates || '[]'); } catch (_) {}
+
+  document.getElementById('scheduled-msg-modal-title').textContent = '✏️ Editar mensagem agendada';
+  document.getElementById('sched-id').value = id;
+  document.getElementById('sched-name').value = msg.name || '';
+  document.querySelector(`[name=sched-type][value=${msg.type || 'fixed'}]`).checked = true;
+  document.getElementById('sched-message').value = msg.message_text || '';
+  document.getElementById('sched-prompt').value = msg.ai_prompt || '';
+  document.getElementById('sched-time-start').value = msg.time_start || '08:00';
+  document.getElementById('sched-time-end').value = msg.time_end || '';
+  updateSchedType();
+  renderSpecialDates();
+
+  // Days
+  const days = msg.days === '*' ? ['0','1','2','3','4','5','6'] : msg.days.split(',');
+  document.querySelectorAll('#sched-day-buttons .day-btn').forEach(b => {
+    b.classList.toggle('active', days.includes(b.dataset.sday));
+  });
+
+  await loadSchedGroupSelector();
+  // Preselect groups
+  const savedGroups = (msg.group_ids || '').split(',').filter(Boolean);
+  document.querySelectorAll('.sched-group-cb').forEach(cb => {
+    cb.checked = savedGroups.includes(cb.value);
+  });
+
+  openModal('modal-scheduled-msg');
+}
+
+function updateSchedType() {
+  const type = document.querySelector('[name=sched-type]:checked')?.value || 'fixed';
+  document.getElementById('sched-fixed-area').style.display = type === 'fixed' ? '' : 'none';
+  document.getElementById('sched-ai-area').style.display = type === 'ai' ? '' : 'none';
+}
+
+function setSchedDays(preset) {
+  document.querySelectorAll('#sched-day-buttons .day-btn').forEach(b => {
+    const d = parseInt(b.dataset.sday);
+    if (preset === 'all') b.classList.add('active');
+    else if (preset === 'weekdays') b.classList.toggle('active', d >= 1 && d <= 5);
+    else if (preset === 'weekend') b.classList.toggle('active', d === 0 || d === 6);
+  });
+}
+
+function addSpecialDate() {
+  const date = document.getElementById('sched-special-date').value.trim();
+  const msg = document.getElementById('sched-special-msg').value.trim();
+  if (!date || !msg) return toast('Preencha data e mensagem especial.', 'err');
+  if (!/^\d{2}\/\d{2}$/.test(date)) return toast('Data no formato MM/DD (ex: 12/25).', 'err');
+  schedSpecialDates = schedSpecialDates.filter(s => s.date !== date);
+  schedSpecialDates.push({ date, message: msg });
+  renderSpecialDates();
+  document.getElementById('sched-special-date').value = '';
+  document.getElementById('sched-special-msg').value = '';
+}
+
+function removeSpecialDate(date) {
+  schedSpecialDates = schedSpecialDates.filter(s => s.date !== date);
+  renderSpecialDates();
+}
+
+function renderSpecialDates() {
+  const el = document.getElementById('sched-special-dates-list');
+  if (!schedSpecialDates.length) { el.innerHTML = ''; return; }
+  el.innerHTML = schedSpecialDates.map(s => `
+    <div style="display:flex;align-items:center;gap:8px;background:#f5f5f5;border-radius:8px;padding:8px 12px;">
+      <span style="font-weight:700;color:var(--blue);">${s.date}</span>
+      <span style="flex:1;font-size:0.88rem;">${s.message}</span>
+      <button type="button" onclick="removeSpecialDate('${s.date}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:1.1rem;">✕</button>
+    </div>
+  `).join('');
+}
+
+async function saveScheduledMsg(e) {
+  e.preventDefault();
+  const id = document.getElementById('sched-id').value;
+  const type = document.querySelector('[name=sched-type]:checked')?.value || 'fixed';
+  const activeDays = Array.from(document.querySelectorAll('#sched-day-buttons .day-btn.active')).map(b => b.dataset.sday);
+  const selectedGroups = Array.from(document.querySelectorAll('.sched-group-cb:checked')).map(cb => cb.value);
+  const timeStart = document.getElementById('sched-time-start').value;
+  const timeEnd = document.getElementById('sched-time-end').value;
+
+  const payload = {
+    name: document.getElementById('sched-name').value.trim(),
+    type,
+    message_text: document.getElementById('sched-message').value.trim(),
+    ai_prompt: document.getElementById('sched-prompt').value.trim(),
+    group_ids: selectedGroups.join(','),
+    days: activeDays.length === 7 ? '*' : activeDays.join(','),
+    time_start: timeStart,
+    time_end: timeEnd || timeStart,
+    special_dates: JSON.stringify(schedSpecialDates),
+    active: 1,
+  };
+
+  if (!payload.name) return toast('Nome é obrigatório.', 'err');
+  if (!timeStart) return toast('Horário de início é obrigatório.', 'err');
+
+  const url = id ? `/api/scheduled-messages/${id}` : '/api/scheduled-messages';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-scheduled-msg');
+  toast(id ? '✅ Mensagem atualizada!' : '✅ Mensagem agendada criada!');
+  loadScheduledMsgs();
+}
+
+async function toggleScheduledMsg(id, active) {
+  await fetch(`/api/scheduled-messages/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadScheduledMsgs();
+  toast(active ? '▶ Mensagem ativada!' : '⏸ Mensagem pausada.');
+}
+
+async function deleteScheduledMsg(id) {
+  if (!confirm('Excluir esta mensagem agendada?')) return;
+  await fetch(`/api/scheduled-messages/${id}`, { method: 'DELETE' });
+  loadScheduledMsgs();
+  toast('🗑️ Mensagem excluída.');
+}
+
+// ===== CONFIGURAÇÕES POR GRUPO (boas-vindas / despedida / moderação) =====
+function populateGroupSettingsSelect() {
+  const sel = document.getElementById('gs-group-select');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Selecione um grupo...</option>' +
+    allGroups.map(g => `<option value="${g.id}">${g.isAdmin ? '👑' : '💬'} ${g.name}</option>`).join('');
+  if (current && allGroups.some(g => g.id === current)) sel.value = current;
+}
+
+async function loadGroupSettingsFor(groupId) {
+  const formArea = document.getElementById('gs-form-area');
+  const warning = document.getElementById('gs-admin-warning');
+  if (!groupId) { formArea.style.display = 'none'; warning.style.display = 'none'; return; }
+
+  const group = allGroups.find(g => g.id === groupId);
+  warning.style.display = group && !group.isAdmin ? 'block' : 'none';
+
+  const gs = await fetch(`/api/group-settings/${encodeURIComponent(groupId)}`).then(r => r.json()).catch(() => null);
+  if (!gs) { toast('Erro ao carregar configurações do grupo.', 'err'); return; }
+
+  document.getElementById('gs-welcome-enabled').checked = !!gs.welcome_enabled;
+  document.getElementById('gs-welcome-message').value = gs.welcome_message || '';
+  document.getElementById('gs-welcome-send-group').checked = gs.welcome_send_group !== 0;
+  document.getElementById('gs-welcome-send-dm').checked = !!gs.welcome_send_dm;
+  document.getElementById('gs-farewell-enabled').checked = !!gs.farewell_enabled;
+  document.getElementById('gs-farewell-message').value = gs.farewell_message || '';
+  document.getElementById('gs-farewell-send-group').checked = gs.farewell_send_group !== 0;
+  document.getElementById('gs-farewell-send-dm').checked = !!gs.farewell_send_dm;
+  document.getElementById('gs-moderation-enabled').checked = !!gs.moderation_enabled;
+  document.getElementById('gs-blocked-words').value = gs.blocked_words || '';
+  document.getElementById('gs-moderation-action').value = gs.moderation_action || 'delete';
+  document.getElementById('gs-moderation-send-group').checked = gs.moderation_send_group !== 0;
+  document.getElementById('gs-moderation-send-dm').checked = !!gs.moderation_send_dm;
+  document.getElementById('gs-moderation-block-links').checked = !!gs.moderation_block_links;
+  document.getElementById('gs-moderation-kick').checked = !!gs.moderation_kick_enabled;
+  formArea.style.display = 'block';
+}
+
+async function saveGroupSettings() {
+  const groupId = document.getElementById('gs-group-select').value;
+  if (!groupId) return;
+  const payload = {
+    welcome_enabled: document.getElementById('gs-welcome-enabled').checked ? 1 : 0,
+    welcome_message: document.getElementById('gs-welcome-message').value.trim(),
+    welcome_send_group: document.getElementById('gs-welcome-send-group').checked ? 1 : 0,
+    welcome_send_dm: document.getElementById('gs-welcome-send-dm').checked ? 1 : 0,
+    farewell_enabled: document.getElementById('gs-farewell-enabled').checked ? 1 : 0,
+    farewell_message: document.getElementById('gs-farewell-message').value.trim(),
+    farewell_send_group: document.getElementById('gs-farewell-send-group').checked ? 1 : 0,
+    farewell_send_dm: document.getElementById('gs-farewell-send-dm').checked ? 1 : 0,
+    moderation_enabled: document.getElementById('gs-moderation-enabled').checked ? 1 : 0,
+    blocked_words: document.getElementById('gs-blocked-words').value.trim(),
+    moderation_action: document.getElementById('gs-moderation-action').value,
+    moderation_send_group: document.getElementById('gs-moderation-send-group').checked ? 1 : 0,
+    moderation_send_dm: document.getElementById('gs-moderation-send-dm').checked ? 1 : 0,
+    moderation_block_links: document.getElementById('gs-moderation-block-links').checked ? 1 : 0,
+    moderation_kick_enabled: document.getElementById('gs-moderation-kick').checked ? 1 : 0,
+  };
+  const res = await fetch(`/api/group-settings/${encodeURIComponent(groupId)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('✅ Configurações do grupo salvas!');
+}
+
+// ===== AUTO-ESCALA DE GRUPOS (SÉRIE) =====
+let currentGroupSeriesId = null;
+let currentGroupSeriesActive = true;
+
+function populateGroupSeriesGroupSelect() {
+  const sel = document.getElementById('gseries-group-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Selecione um grupo...</option>' +
+    allGroups.map(g => `<option value="${g.id}">${g.isAdmin ? '👑' : '💬'} ${g.name}</option>`).join('');
+}
+
+async function loadGroupSeries() {
+  const createArea = document.getElementById('gseries-create-area');
+  const detailArea = document.getElementById('gseries-detail-area');
+  if (!createArea || !detailArea) return;
+
+  const list = await fetch('/api/group-series').then(r => r.json()).catch(() => []);
+  const series = list[0]; // MVP: uma série por vez
+  if (!series) {
+    createArea.style.display = 'block';
+    detailArea.style.display = 'none';
+    currentGroupSeriesId = null;
+    return;
+  }
+
+  createArea.style.display = 'none';
+  detailArea.style.display = 'block';
+  currentGroupSeriesId = series.id;
+  currentGroupSeriesActive = !!series.active;
+
+  const detail = await fetch(`/api/group-series/${series.id}`).then(r => r.json()).catch(() => null);
+  if (!detail) return;
+
+  document.getElementById('gseries-name').textContent = detail.name;
+  document.getElementById('gseries-threshold-display').value = detail.member_threshold;
+  document.getElementById('gseries-status-badge').innerHTML = currentGroupSeriesActive
+    ? '<span class="tag tag-auto">🟢 Ativa</span>' : '<span class="tag" style="background:#eee;color:#666;">⏸️ Pausada</span>';
+  const toggleBtn = document.getElementById('gseries-toggle-btn');
+  toggleBtn.textContent = currentGroupSeriesActive ? '⏸️ Pausar auto-escala' : '▶️ Reativar auto-escala';
+  toggleBtn.className = currentGroupSeriesActive ? 'btn btn-ghost' : 'btn btn-green';
+
+  const listEl = document.getElementById('gseries-groups-list');
+  listEl.innerHTML = detail.groups.map(g => `
+    <div class="sched-msg-card ${g.status === 'full' ? 'inactive' : ''}">
+      <div class="sched-msg-info">
+        <div class="sched-msg-name">${g.status === 'active' ? '🟢' : '⚪'} #${g.sequence_number} — ${g.group_name || g.group_id}</div>
+        <div class="sched-msg-meta">
+          <span>👥 ${g.participant_count ?? '—'} membros</span>
+          <span>${g.status === 'active' ? 'Ativo (recebendo novos leads)' : 'Cheio'}</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function createGroupSeriesForm() {
+  const name = document.getElementById('gseries-name-input').value.trim();
+  const threshold = parseInt(document.getElementById('gseries-threshold-input').value) || 1000;
+  const groupId = document.getElementById('gseries-group-select').value;
+  if (!name) return toast('Nome da série é obrigatório.', 'err');
+  if (!groupId) return toast('Selecione o grupo #1.', 'err');
+
+  const res = await fetch('/api/group-series', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, member_threshold: threshold, groupId }),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('✅ Auto-escala ativada!');
+  loadGroupSeries();
+}
+
+async function saveGroupSeriesThreshold() {
+  if (!currentGroupSeriesId) return;
+  const threshold = parseInt(document.getElementById('gseries-threshold-display').value) || 1000;
+  const res = await fetch(`/api/group-series/${currentGroupSeriesId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ member_threshold: threshold }),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('✅ Limite atualizado!');
+  loadGroupSeries();
+}
+
+async function toggleGroupSeriesActive() {
+  if (!currentGroupSeriesId) return;
+  const newActive = !currentGroupSeriesActive;
+  const res = await fetch(`/api/group-series/${currentGroupSeriesId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ active: newActive }),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast(newActive ? '▶️ Auto-escala reativada!' : '⏸️ Auto-escala pausada — o grupo não vai mais se dividir automaticamente.');
+  loadGroupSeries();
+}
+
+async function deleteGroupSeriesConfirm() {
+  if (!currentGroupSeriesId) return;
+  if (!confirm('Excluir essa série de auto-escala? Os grupos em si não são apagados, só param de ser monitorados/vinculados entre si.')) return;
+  const res = await fetch(`/api/group-series/${currentGroupSeriesId}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('🗑️ Série excluída.');
+  loadGroupSeries();
+}
+
+// ===== RESPOSTAS AUTOMÁTICAS =====
+async function loadAutoReplyRules() {
+  const el = document.getElementById('autoreply-list');
+  if (!el) return;
+  const rules = await fetch('/api/auto-reply-rules').then(r => r.json()).catch(() => []);
+  if (!rules.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">🗨️</div><p>Nenhuma regra criada ainda.<br>Clique em "Nova regra de resposta" para começar.</p></div>';
+    return;
+  }
+  const scopeLabels = { both: 'Grupos e DMs', groups: 'Só grupos', dms: 'Só DMs' };
+  el.innerHTML = rules.map(r => `
+    <div class="sched-msg-card ${r.active ? '' : 'inactive'}">
+      <div class="sched-msg-info">
+        <div class="sched-msg-name">${r.active ? '🟢' : '⏸️'} ${r.name}</div>
+        <div class="sched-msg-meta">
+          <span>🔑 ${r.keywords}</span>
+          <span>📍 ${scopeLabels[r.scope] || r.scope}</span>
+          <span>⏱ ${r.cooldown_minutes} min</span>
+        </div>
+        <div style="font-size:0.82rem;color:#555;margin-top:6px;">${r.reply_type === 'ai' ? '🤖 ' + (r.ai_prompt || '').slice(0,80) : (r.reply_text || '').slice(0,80)}</div>
+      </div>
+      <div class="sched-msg-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editAutoReplyRule(${r.id})">✏️</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleAutoReplyRuleActive(${r.id}, ${r.active ? 0 : 1})">${r.active ? '⏸' : '▶'}</button>
+        <button class="btn btn-red btn-sm" onclick="deleteAutoReplyRule(${r.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function loadAutoReplyGroupSelector(preselected = []) {
+  const el = document.getElementById('ar-group-selector');
+  let groups = [];
+  try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+  if (!groups.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Conecte o WhatsApp para selecionar grupos</span>';
+    return;
+  }
+  el.innerHTML = groups.map(g => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+      <input type="checkbox" value="${g.id}" class="ar-group-cb" ${preselected.includes(g.id) ? 'checked' : ''} style="width:auto;cursor:pointer;" />
+      ${g.isAdmin ? '👑' : '💬'} ${g.name}
+    </label>
+  `).join('');
+}
+
+function updateAutoReplyGroupSelector() {
+  const scope = document.getElementById('ar-scope').value;
+  document.getElementById('ar-group-selector-group').style.display = (scope === 'groups' || scope === 'both') ? '' : 'none';
+}
+
+function updateAutoReplyTriggerUI() {
+  const type = document.getElementById('ar-trigger-type').value;
+  document.getElementById('ar-matchmode-group').style.display = type === 'regex' ? 'none' : '';
+  document.getElementById('ar-keywords-desc').textContent = type === 'regex'
+    ? 'Digite um padrão de expressão regular (ex: ^oi|ola$).'
+    : 'Separe várias opções por vírgula. Ex: oi, olá, bom dia';
+}
+
+function updateAutoReplyType() {
+  const type = document.querySelector('[name=ar-reply-type]:checked')?.value || 'fixed';
+  document.getElementById('ar-fixed-area').style.display = type === 'fixed' ? '' : 'none';
+  document.getElementById('ar-ai-area').style.display = type === 'ai' ? '' : 'none';
+}
+
+function openNewAutoReplyRule() {
+  document.getElementById('autoreply-modal-title').textContent = '🗨️ Nova regra de resposta';
+  document.getElementById('ar-id').value = '';
+  document.getElementById('ar-name').value = '';
+  document.getElementById('ar-trigger-type').value = 'contains';
+  document.getElementById('ar-keywords').value = '';
+  document.getElementById('ar-match-mode').value = 'any';
+  document.getElementById('ar-case-sensitive').checked = false;
+  document.querySelector('[name=ar-reply-type][value=fixed]').checked = true;
+  document.getElementById('ar-reply-text').value = '';
+  document.getElementById('ar-ai-prompt').value = '';
+  document.getElementById('ar-scope').value = 'both';
+  document.getElementById('ar-cooldown').value = 10;
+  document.getElementById('ar-priority').value = 0;
+  document.getElementById('ar-stop-on-match').checked = true;
+  updateAutoReplyTriggerUI();
+  updateAutoReplyType();
+  updateAutoReplyGroupSelector();
+  loadAutoReplyGroupSelector();
+  openModal('modal-autoreply');
+}
+
+async function editAutoReplyRule(id) {
+  const rule = await fetch(`/api/auto-reply-rules/${id}`).then(r => r.json());
+  document.getElementById('autoreply-modal-title').textContent = '✏️ Editar regra de resposta';
+  document.getElementById('ar-id').value = id;
+  document.getElementById('ar-name').value = rule.name || '';
+  document.getElementById('ar-trigger-type').value = rule.trigger_type || 'contains';
+  document.getElementById('ar-keywords').value = rule.keywords || '';
+  document.getElementById('ar-match-mode').value = rule.match_mode || 'any';
+  document.getElementById('ar-case-sensitive').checked = !!rule.case_sensitive;
+  document.querySelector(`[name=ar-reply-type][value=${rule.reply_type || 'fixed'}]`).checked = true;
+  document.getElementById('ar-reply-text').value = rule.reply_text || '';
+  document.getElementById('ar-ai-prompt').value = rule.ai_prompt || '';
+  document.getElementById('ar-scope').value = rule.scope || 'both';
+  document.getElementById('ar-cooldown').value = rule.cooldown_minutes ?? 10;
+  document.getElementById('ar-priority').value = rule.priority ?? 0;
+  document.getElementById('ar-stop-on-match').checked = !!rule.stop_on_match;
+  updateAutoReplyTriggerUI();
+  updateAutoReplyType();
+  updateAutoReplyGroupSelector();
+  await loadAutoReplyGroupSelector((rule.group_ids || '').split(',').filter(Boolean));
+  openModal('modal-autoreply');
+}
+
+async function saveAutoReplyRule(e) {
+  e.preventDefault();
+  const id = document.getElementById('ar-id').value;
+  const selectedGroups = Array.from(document.querySelectorAll('.ar-group-cb:checked')).map(cb => cb.value);
+  const payload = {
+    name: document.getElementById('ar-name').value.trim(),
+    trigger_type: document.getElementById('ar-trigger-type').value,
+    keywords: document.getElementById('ar-keywords').value.trim(),
+    match_mode: document.getElementById('ar-match-mode').value,
+    case_sensitive: document.getElementById('ar-case-sensitive').checked ? 1 : 0,
+    reply_type: document.querySelector('[name=ar-reply-type]:checked')?.value || 'fixed',
+    reply_text: document.getElementById('ar-reply-text').value.trim(),
+    ai_prompt: document.getElementById('ar-ai-prompt').value.trim(),
+    scope: document.getElementById('ar-scope').value,
+    group_ids: selectedGroups.join(','),
+    cooldown_minutes: parseInt(document.getElementById('ar-cooldown').value) || 0,
+    priority: parseInt(document.getElementById('ar-priority').value) || 0,
+    stop_on_match: document.getElementById('ar-stop-on-match').checked ? 1 : 0,
+    active: 1,
+  };
+  if (!payload.name) return toast('Nome é obrigatório.', 'err');
+  if (!payload.keywords) return toast('Informe as palavras-chave.', 'err');
+  if (payload.reply_type === 'fixed' && !payload.reply_text) return toast('Digite o texto da resposta.', 'err');
+  if (payload.reply_type === 'ai' && !payload.ai_prompt) return toast('Descreva o que o bot deve responder.', 'err');
+
+  const url = id ? `/api/auto-reply-rules/${id}` : '/api/auto-reply-rules';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-autoreply');
+  toast(id ? '✅ Regra atualizada!' : '✅ Regra criada!');
+  loadAutoReplyRules();
+}
+
+async function toggleAutoReplyRuleActive(id, active) {
+  await fetch(`/api/auto-reply-rules/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadAutoReplyRules();
+  toast(active ? '▶ Regra ativada!' : '⏸ Regra pausada.');
+}
+
+async function deleteAutoReplyRule(id) {
+  if (!confirm('Excluir esta regra de resposta automática?')) return;
+  await fetch(`/api/auto-reply-rules/${id}`, { method: 'DELETE' });
+  loadAutoReplyRules();
+  toast('🗑️ Regra excluída.');
+}
+
+// ===== INTEGRAÇÕES: TOKENS DE ENTRADA =====
+async function loadWebhookTokens() {
+  const el = document.getElementById('webhook-tokens-list');
+  if (!el) return;
+  const urlEl = document.getElementById('inbound-url');
+  if (urlEl) urlEl.textContent = window.location.origin + '/api/inbound/send';
+  const tokens = await fetch('/api/webhook-tokens').then(r => r.json()).catch(() => []);
+  if (!tokens.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">🔑</div><p>Nenhum token gerado ainda.</p></div>';
+    return;
+  }
+  el.innerHTML = tokens.map(t => `
+    <div class="sched-msg-card ${t.active ? '' : 'inactive'}">
+      <div class="sched-msg-info">
+        <div class="sched-msg-name">${t.active ? '🟢' : '⏸️'} ${t.name}</div>
+        <div class="sched-msg-meta">
+          <span>Criado em ${fmt(t.created_at)}</span>
+          <span>${t.last_used_at ? 'Último uso: ' + fmt(t.last_used_at) : 'Nunca usado'}</span>
+        </div>
+      </div>
+      <div class="sched-msg-actions">
+        <button class="btn btn-ghost btn-sm" onclick="toggleWebhookToken(${t.id}, ${t.active ? 0 : 1})">${t.active ? '⏸' : '▶'}</button>
+        <button class="btn btn-red btn-sm" onclick="deleteWebhookToken(${t.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openNewWebhookToken() {
+  document.getElementById('wt-name').value = '';
+  document.getElementById('wt-create-area').style.display = 'block';
+  document.getElementById('wt-created-area').style.display = 'none';
+  openModal('modal-webhook-token');
+}
+
+async function createWebhookToken() {
+  const name = document.getElementById('wt-name').value.trim();
+  if (!name) return toast('Informe um nome para o token.', 'err');
+  const res = await fetch('/api/webhook-tokens', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  document.getElementById('wt-token-value').value = data.token;
+  document.getElementById('wt-create-area').style.display = 'none';
+  document.getElementById('wt-created-area').style.display = 'block';
+  loadWebhookTokens();
+}
+
+function copyWebhookToken() {
+  const val = document.getElementById('wt-token-value').value;
+  navigator.clipboard.writeText(val).then(() => toast('✅ Token copiado!'));
+}
+
+async function toggleWebhookToken(id, active) {
+  await fetch(`/api/webhook-tokens/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadWebhookTokens();
+  toast(active ? '▶ Token ativado!' : '⏸ Token desativado.');
+}
+
+async function deleteWebhookToken(id) {
+  if (!confirm('Excluir este token? Sistemas que o utilizam vão parar de funcionar.')) return;
+  await fetch(`/api/webhook-tokens/${id}`, { method: 'DELETE' });
+  loadWebhookTokens();
+  toast('🗑️ Token excluído.');
+}
+
+// ===== INTEGRAÇÕES: WEBHOOKS DE SAÍDA =====
+async function loadWebhookSubs() {
+  const el = document.getElementById('webhook-subs-list');
+  if (!el) return;
+  const subs = await fetch('/api/webhooks').then(r => r.json()).catch(() => []);
+  if (!subs.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">📡</div><p>Nenhuma assinatura cadastrada ainda.</p></div>';
+    return;
+  }
+  el.innerHTML = subs.map(s => `
+    <div class="sched-msg-card ${s.active ? '' : 'inactive'}">
+      <div class="sched-msg-info">
+        <div class="sched-msg-name">${s.active ? '🟢' : '⏸️'} ${s.name}</div>
+        <div class="sched-msg-meta">
+          <span>🌐 ${s.url}</span>
+          <span>${s.last_status ? '📶 ' + s.last_status : 'Ainda não disparado'}</span>
+        </div>
+      </div>
+      <div class="sched-msg-actions">
+        <button class="btn btn-blue btn-sm" onclick="testWebhookSub(${s.id})">🧪 Testar</button>
+        <button class="btn btn-ghost btn-sm" onclick="editWebhookSub(${s.id})">✏️</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleWebhookSub(${s.id}, ${s.active ? 0 : 1})">${s.active ? '⏸' : '▶'}</button>
+        <button class="btn btn-red btn-sm" onclick="deleteWebhookSub(${s.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openNewWebhookSub() {
+  document.getElementById('webhook-sub-modal-title').textContent = '📡 Nova assinatura de webhook';
+  document.getElementById('ws-id').value = '';
+  document.getElementById('ws-name').value = '';
+  document.getElementById('ws-url').value = '';
+  document.getElementById('ws-event').value = 'message_received';
+  document.getElementById('ws-secret').value = '';
+  openModal('modal-webhook-sub');
+}
+
+async function editWebhookSub(id) {
+  const subs = await fetch('/api/webhooks').then(r => r.json());
+  const sub = subs.find(s => s.id === id);
+  if (!sub) return;
+  document.getElementById('webhook-sub-modal-title').textContent = '✏️ Editar assinatura';
+  document.getElementById('ws-id').value = id;
+  document.getElementById('ws-name').value = sub.name || '';
+  document.getElementById('ws-url').value = sub.url || '';
+  document.getElementById('ws-event').value = sub.event || 'message_received';
+  document.getElementById('ws-secret').value = sub.secret || '';
+  openModal('modal-webhook-sub');
+}
+
+async function saveWebhookSub(e) {
+  e.preventDefault();
+  const id = document.getElementById('ws-id').value;
+  const payload = {
+    name: document.getElementById('ws-name').value.trim(),
+    url: document.getElementById('ws-url').value.trim(),
+    event: document.getElementById('ws-event').value,
+    secret: document.getElementById('ws-secret').value.trim(),
+    active: 1,
+  };
+  if (!payload.name || !payload.url) return toast('Nome e URL são obrigatórios.', 'err');
+
+  const url = id ? `/api/webhooks/${id}` : '/api/webhooks';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-webhook-sub');
+  toast(id ? '✅ Assinatura atualizada!' : '✅ Assinatura criada!');
+  loadWebhookSubs();
+}
+
+async function toggleWebhookSub(id, active) {
+  await fetch(`/api/webhooks/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadWebhookSubs();
+  toast(active ? '▶ Assinatura ativada!' : '⏸ Assinatura pausada.');
+}
+
+async function deleteWebhookSub(id) {
+  if (!confirm('Excluir esta assinatura de webhook?')) return;
+  await fetch(`/api/webhooks/${id}`, { method: 'DELETE' });
+  loadWebhookSubs();
+  toast('🗑️ Assinatura excluída.');
+}
+
+async function testWebhookSub(id) {
+  toast('🧪 Testando...');
+  const res = await fetch(`/api/webhooks/${id}/test`, { method: 'POST' });
+  const data = await res.json();
+  if (data.ok) toast(`✅ Teste enviado! Status HTTP ${data.status}`);
+  else toast('❌ Falha: ' + (data.error || 'erro desconhecido'), 'err');
+  loadWebhookSubs();
+}
+
+function loadWebhooksPage() {
+  loadWebhookTokens();
+  loadWebhookSubs();
+}
+
+// ===== CAMPANHAS =====
+let campaignsPollTimer = null;
+
+async function loadCampaigns() {
+  const el = document.getElementById('campaigns-list');
+  if (!el) return;
+  const campaigns = await fetch('/api/campaigns').then(r => r.json()).catch(() => []);
+  if (!campaigns.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">📢</div><p>Nenhuma campanha criada ainda.</p></div>';
+  } else {
+    const statusLabels = { draft: '📝 Rascunho', running: '🟢 Em andamento', paused: '⏸️ Pausada', completed: '✅ Concluída', cancelled: '🚫 Cancelada' };
+    const progresses = await Promise.all(campaigns.map(c => fetch(`/api/campaigns/${c.id}/progress`).then(r => r.json()).catch(() => null)));
+    el.innerHTML = campaigns.map((c, i) => {
+      const p = progresses[i] || { total: 0, sent: 0, failed: 0, pending: 0, skipped: 0 };
+      const pct = p.total ? Math.round(((p.sent + p.failed + p.skipped) / p.total) * 100) : 0;
+      return `
+        <div class="sched-msg-card">
+          <div class="sched-msg-info">
+            <div class="sched-msg-name">${statusLabels[c.status] || c.status} ${c.name}</div>
+            <div class="sched-msg-meta">
+              <span>${c.target_type === 'groups' ? '📱 Grupos' : '👤 Contatos'}</span>
+              <span>⏱ ${c.delay_min_seconds}-${c.delay_max_seconds}s</span>
+              <span>${p.sent}/${p.total} enviados${p.failed ? ` · ${p.failed} falharam` : ''}${p.skipped ? ` · ${p.skipped} ignorados` : ''}</span>
+            </div>
+            <div style="background:var(--bg);border-radius:6px;height:8px;margin-top:8px;overflow:hidden;">
+              <div style="background:var(--green);height:100%;width:${pct}%;transition:width 0.3s;"></div>
+            </div>
+          </div>
+          <div class="sched-msg-actions">
+            ${c.status === 'draft' || c.status === 'paused' ? `<button class="btn btn-green btn-sm" onclick="startCampaignRun(${c.id})">▶ Iniciar</button>` : ''}
+            ${c.status === 'running' ? `<button class="btn btn-ghost btn-sm" onclick="pauseCampaignRun(${c.id})">⏸ Pausar</button>` : ''}
+            ${c.status === 'running' || c.status === 'paused' ? `<button class="btn btn-red btn-sm" onclick="cancelCampaignRun(${c.id})">🚫 Cancelar</button>` : ''}
+            <button class="btn btn-red btn-sm" onclick="deleteCampaign(${c.id})">🗑️</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  clearTimeout(campaignsPollTimer);
+  const hasRunning = campaigns.some(c => c.status === 'running');
+  if (hasRunning && document.getElementById('page-campaigns')?.classList.contains('active')) {
+    campaignsPollTimer = setTimeout(loadCampaigns, 3000);
+  }
+}
+
+let campaignTargetType = 'groups';
+function switchCampaignTarget(type) {
+  campaignTargetType = type;
+  document.getElementById('camp-target-groups-area').style.display = type === 'groups' ? '' : 'none';
+  document.getElementById('camp-target-contacts-area').style.display = type === 'contacts' ? '' : 'none';
+  document.getElementById('camp-target-groups-btn').className = type === 'groups' ? 'btn btn-primary' : 'btn btn-ghost';
+  document.getElementById('camp-target-contacts-btn').className = type === 'contacts' ? 'btn btn-primary' : 'btn btn-ghost';
+}
+
+let campaignSelectedGroups = [];
+async function loadCampaignGroupSelector() {
+  const el = document.getElementById('camp-group-selector');
+  let groups = [];
+  try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+  campaignSelectedGroups = [];
+  if (!groups.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Conecte o WhatsApp para selecionar grupos</span>';
+    return;
+  }
+  el.innerHTML = groups.map(g => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+      <input type="checkbox" value="${g.id}" class="camp-group-cb" onchange="toggleCampaignGroup('${g.id}',${JSON.stringify(g.name)},this.checked)" style="width:auto;cursor:pointer;" />
+      ${g.isAdmin ? '👑' : '💬'} ${g.name}
+    </label>
+  `).join('');
+}
+function toggleCampaignGroup(id, name, checked) {
+  if (checked) { if (!campaignSelectedGroups.find(g => g.id === id)) campaignSelectedGroups.push({ id, name }); }
+  else campaignSelectedGroups = campaignSelectedGroups.filter(g => g.id !== id);
+}
+
+function openNewCampaign() {
+  document.getElementById('camp-name').value = '';
+  document.getElementById('camp-message').value = '';
+  document.getElementById('camp-contacts').value = '';
+  document.getElementById('camp-delay-min').value = 8;
+  document.getElementById('camp-delay-max').value = 20;
+  document.querySelector('[name=camp-contact-source][value=known_only]').checked = true;
+  resetImgWidget('camp');
+  switchCampaignTarget('groups');
+  loadCampaignGroupSelector();
+  openModal('modal-campaign');
+}
+
+async function createCampaign() {
+  const name = document.getElementById('camp-name').value.trim();
+  const message_text = document.getElementById('camp-message').value.trim();
+  if (!name) return toast('Nome é obrigatório.', 'err');
+  if (!message_text) return toast('Digite a mensagem da campanha.', 'err');
+
+  let targets = [];
+  if (campaignTargetType === 'groups') {
+    targets = campaignSelectedGroups.map(g => ({ id: g.id, name: g.name }));
+  } else {
+    const lines = document.getElementById('camp-contacts').value.split('\n').map(l => l.trim()).filter(Boolean);
+    targets = lines.map(l => ({ id: l, name: l }));
+  }
+  if (!targets.length) return toast('Selecione ao menos um destinatário.', 'err');
+
+  const contactSource = document.querySelector('[name=camp-contact-source]:checked')?.value || 'known_only';
+  const payload = {
+    name, message_text,
+    image_url: getImgValue('camp'),
+    target_type: campaignTargetType,
+    contact_source: contactSource,
+    delay_min_seconds: parseInt(document.getElementById('camp-delay-min').value) || 8,
+    delay_max_seconds: parseInt(document.getElementById('camp-delay-max').value) || 20,
+    targets,
+  };
+
+  const res = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-campaign');
+  toast('✅ Campanha criada! Clique em "Iniciar" para começar o envio.');
+  loadCampaigns();
+}
+
+async function startCampaignRun(id) {
+  const res = await fetch(`/api/campaigns/${id}/start`, { method: 'POST' });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('▶ Campanha iniciada!');
+  loadCampaigns();
+}
+
+async function pauseCampaignRun(id) {
+  await fetch(`/api/campaigns/${id}/pause`, { method: 'POST' });
+  toast('⏸ Campanha pausada.');
+  loadCampaigns();
+}
+
+async function cancelCampaignRun(id) {
+  if (!confirm('Cancelar esta campanha? Os envios pendentes não serão enviados.')) return;
+  await fetch(`/api/campaigns/${id}/cancel`, { method: 'POST' });
+  toast('🚫 Campanha cancelada.');
+  loadCampaigns();
+}
+
+async function deleteCampaign(id) {
+  if (!confirm('Excluir esta campanha e seu histórico de envio?')) return;
+  await fetch(`/api/campaigns/${id}`, { method: 'DELETE' });
+  loadCampaigns();
+  toast('🗑️ Campanha excluída.');
+}
+
+// ===== INSTAGRAM =====
+async function loadInstagramPage() {
+  await loadInstagramStatus();
+  await loadIgRules();
+}
+
+async function loadInstagramStatus() {
+  const el = document.getElementById('instagram-status-list');
+  if (!el) return;
+  const data = await fetch('/api/instagram/status').then(r => r.json()).catch(() => null);
+  if (!data) { el.innerHTML = '<div class="hint hint-red">Erro ao consultar status.</div>'; return; }
+  const labels = {
+    pageId: 'INSTAGRAM_PAGE_ID', pageAccessToken: 'INSTAGRAM_PAGE_ACCESS_TOKEN',
+    appSecret: 'INSTAGRAM_APP_SECRET', webhookVerifyToken: 'INSTAGRAM_WEBHOOK_VERIFY_TOKEN',
+  };
+  el.innerHTML = `
+    <div class="hint ${data.configured ? 'hint-green' : 'hint-red'}" style="margin-bottom:0;">
+      ${data.configured ? '✅ Todas as variáveis configuradas — webhook pronto para receber comentários.' : '⚠️ Faltam variáveis de ambiente. Configure no .env do servidor:'}
+      <ul style="margin:8px 0 0 18px;">
+        ${Object.entries(labels).map(([k, label]) => `<li>${data.env[k] ? '✅' : '❌'} <code>${label}</code></li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+async function loadIgSeriesSelect() {
+  const sel = document.getElementById('ig-series-select');
+  const list = await fetch('/api/group-series').then(r => r.json()).catch(() => []);
+  sel.innerHTML = '<option value="">Selecione uma série...</option>' +
+    list.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+}
+
+async function loadIgRules() {
+  const el = document.getElementById('ig-rules-list');
+  if (!el) return;
+  const rules = await fetch('/api/instagram-comment-rules').then(r => r.json()).catch(() => []);
+  if (!rules.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">💬</div><p>Nenhuma regra criada ainda.<br>Clique em "Nova regra" para começar.</p></div>';
+    return;
+  }
+  el.innerHTML = rules.map(r => `
+    <div class="sched-msg-card ${r.active ? '' : 'inactive'}">
+      <div class="sched-msg-info">
+        <div class="sched-msg-name">${r.active ? '🟢' : '⏸️'} ${r.name}</div>
+        <div class="sched-msg-meta">
+          <span>🔑 ${r.keywords}</span>
+          ${r.media_id ? `<span>🎬 ${r.media_id}</span>` : '<span>Qualquer post</span>'}
+        </div>
+        <div style="font-size:0.82rem;color:#555;margin-top:6px;">${(r.reply_text || '').slice(0,80)}</div>
+      </div>
+      <div class="sched-msg-actions">
+        <button class="btn btn-ghost btn-sm" onclick="editIgRule(${r.id})">✏️</button>
+        <button class="btn btn-ghost btn-sm" onclick="toggleIgRule(${r.id}, ${r.active ? 0 : 1})">${r.active ? '⏸' : '▶'}</button>
+        <button class="btn btn-red btn-sm" onclick="deleteIgRule(${r.id})">🗑️</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function openNewIgRule() {
+  document.getElementById('ig-rule-modal-title').textContent = '💬 Nova regra de comentário';
+  document.getElementById('ig-id').value = '';
+  document.getElementById('ig-name').value = '';
+  document.getElementById('ig-trigger-type').value = 'contains';
+  document.getElementById('ig-keywords').value = '';
+  document.getElementById('ig-match-mode').value = 'any';
+  document.getElementById('ig-case-sensitive').checked = false;
+  document.getElementById('ig-reply-text').value = '';
+  document.getElementById('ig-media-id').value = '';
+  await loadIgSeriesSelect();
+  document.getElementById('ig-series-select').value = '';
+  openModal('modal-ig-rule');
+}
+
+async function editIgRule(id) {
+  const rule = await fetch(`/api/instagram-comment-rules/${id}`).then(r => r.json());
+  document.getElementById('ig-rule-modal-title').textContent = '✏️ Editar regra de comentário';
+  document.getElementById('ig-id').value = id;
+  document.getElementById('ig-name').value = rule.name || '';
+  document.getElementById('ig-trigger-type').value = rule.trigger_type || 'contains';
+  document.getElementById('ig-keywords').value = rule.keywords || '';
+  document.getElementById('ig-match-mode').value = rule.match_mode || 'any';
+  document.getElementById('ig-case-sensitive').checked = !!rule.case_sensitive;
+  document.getElementById('ig-reply-text').value = rule.reply_text || '';
+  document.getElementById('ig-media-id').value = rule.media_id || '';
+  await loadIgSeriesSelect();
+  document.getElementById('ig-series-select').value = rule.series_id || '';
+  openModal('modal-ig-rule');
+}
+
+async function saveIgRule(e) {
+  e.preventDefault();
+  const id = document.getElementById('ig-id').value;
+  const payload = {
+    name: document.getElementById('ig-name').value.trim(),
+    trigger_type: document.getElementById('ig-trigger-type').value,
+    keywords: document.getElementById('ig-keywords').value.trim(),
+    match_mode: document.getElementById('ig-match-mode').value,
+    case_sensitive: document.getElementById('ig-case-sensitive').checked ? 1 : 0,
+    reply_text: document.getElementById('ig-reply-text').value.trim(),
+    series_id: parseInt(document.getElementById('ig-series-select').value) || null,
+    media_id: document.getElementById('ig-media-id').value.trim(),
+    active: 1,
+  };
+  if (!payload.name) return toast('Nome é obrigatório.', 'err');
+  if (!payload.keywords) return toast('Informe as palavras-chave.', 'err');
+  if (!payload.reply_text) return toast('Digite a resposta do Direct.', 'err');
+  if (payload.reply_text.includes('{group_link}') && !payload.series_id) return toast('Selecione a série de grupos pra usar {group_link}.', 'err');
+
+  const url = id ? `/api/instagram-comment-rules/${id}` : '/api/instagram-comment-rules';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-ig-rule');
+  toast(id ? '✅ Regra atualizada!' : '✅ Regra criada!');
+  loadIgRules();
+}
+
+async function toggleIgRule(id, active) {
+  await fetch(`/api/instagram-comment-rules/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadIgRules();
+  toast(active ? '▶ Regra ativada!' : '⏸ Regra pausada.');
+}
+
+async function deleteIgRule(id) {
+  if (!confirm('Excluir esta regra de comentário?')) return;
+  await fetch(`/api/instagram-comment-rules/${id}`, { method: 'DELETE' });
+  loadIgRules();
+  toast('🗑️ Regra excluída.');
+}
+
+// ===== PRODUTOS COM SUPORTE A IMAGEM =====
+// importProduct — com imagem personalizada
+async function importProduct() {
+  const url = document.getElementById('import-url').value.trim();
+  const affiliateUrl = document.getElementById('import-affiliate').value.trim();
+  const customImageUrl = getImgValue('import');
+  if (!url) return toast('Informe o link do produto.', 'err');
+  const btn = document.getElementById('import-btn');
+  btn.innerHTML = '<span class="spinner"></span> Buscando...';
+  btn.disabled = true;
+  const res = await fetch('/api/products/import', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, affiliateUrl, customImageUrl }),
+  });
+  const data = await res.json();
+  btn.innerHTML = '🔍 Buscar produto';
+  btn.disabled = false;
+  const resultEl = document.getElementById('import-result');
+  resultEl.style.display = 'block';
+  if (data.error) {
+    resultEl.innerHTML = `<div class="hint hint-red">❌ ${data.error}</div>`;
+  } else {
+    resultEl.innerHTML = `<div class="hint hint-green">✅ <strong>${data.title}</strong> importado!<br>Preço: R$ ${data.price ?? 'N/A'}${affiliateUrl ? '<br>🔗 Link de afiliado salvo!' : ''}${customImageUrl ? '<br>🖼️ Imagem personalizada salva!' : ''}</div>`;
+    loadProducts();
+    resetImgWidget('import');
+    setTimeout(() => closeModal('modal-import'), 2500);
+  }
+}
+
+// addProductManual com imagem
+async function addProductManual(e) {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target));
+  // The hidden image_url field is already set by the widget
+  const res = await fetch('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const r = await res.json();
+  if (r.error) return toast('❌ ' + r.error, 'err');
+  closeModal('modal-add');
+  resetImgWidget('add');
+  e.target.reset();
+  loadProducts();
+  toast('✅ Produto adicionado!');
+}
+
+// editProduct com imagem
+async function editProduct(id) {
+  const product = await fetch(`/api/products/${id}`).then(r => r.json());
+  const form = document.getElementById('edit-product-form');
+  for (const [k, v] of Object.entries(product)) {
+    if (k === 'image_url') continue; // handled by widget
+    if (form.elements[k]) form.elements[k].value = v ?? '';
+  }
+  // Populate image widget
+  resetImgWidget('edit');
+  if (product.image_url) {
+    const hidden = document.getElementById('edit-img-value');
+    if (hidden) hidden.value = product.image_url;
+    if (product.image_url.startsWith('data:')) {
+      const prev = document.getElementById('edit-img-preview');
+      if (prev) { prev.style.display = 'block'; prev.innerHTML = `<img src="${product.image_url}" style="max-height:120px;max-width:100%;border-radius:8px;border:2px solid var(--border);" />`; }
+    } else {
+      // Show in URL tab
+      switchImgTab('edit', 'url');
+      document.getElementById('edit-img-url').value = product.image_url;
+      previewImgUrl('edit');
+    }
+  }
+  openModal('modal-edit');
+}
+
+loadDashboard();
+</script>
+</body>
+</html>

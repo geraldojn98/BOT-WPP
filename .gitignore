@@ -1,0 +1,7 @@
+node_modules/
+data/
+.wwebjs_cache/
+.env
+*.log
+test-*.js
+icon-*.svg

@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+numReplicas = 1
+startCommand = "node --experimental-sqlite src/server.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+# IMPORTANTE: Configure um Volume no painel do Railway
+# Dashboard -> Service -> Volumes -> Add Volume
+# Mount Path: /app/data
+# Isso garante que o banco de dados e a sessão do WhatsApp persistem entre deploys.
