@@ -415,6 +415,12 @@
       <div style="margin-bottom:12px;">
         <span id="groups-counter" style="font-size:0.88rem; color:var(--muted);">Nenhum grupo selecionado</span>
       </div>
+      <input type="text" id="group-search" placeholder="🔎 Buscar grupo pelo nome..." style="margin-bottom:10px;" oninput="renderGroups()" />
+      <div id="group-open-filter" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" data-filter="all" onclick="setGroupOpenFilter('all')">Todos</button>
+        <button type="button" class="btn btn-sm" data-filter="open" onclick="setGroupOpenFilter('open')">🔓 Abertos (todos podem enviar)</button>
+        <button type="button" class="btn btn-sm" data-filter="closed" onclick="setGroupOpenFilter('closed')">🔒 Fechados (só admin envia)</button>
+      </div>
       <div id="group-list" class="group-list">
         <div class="empty-state"><div class="empty-icon">💬</div><p>Carregando...</p></div>
       </div>
@@ -1425,6 +1431,12 @@
 // ===== ESTADO GLOBAL =====
 let selectedGroups = [];
 let allGroups = [];
+let groupOpenFilter = 'all';
+
+function setGroupOpenFilter(filter) {
+  groupOpenFilter = filter;
+  renderGroups();
+}
 
 // ===== NAVEGAÇÃO =====
 function showPage(name, btn) {
@@ -1735,6 +1747,12 @@ async function editGroupNickname(groupId) {
 function renderGroups() {
   const listEl = document.getElementById('group-list');
   const counter = document.getElementById('groups-counter');
+  const filterBar = document.getElementById('group-open-filter');
+
+  filterBar.style.display = liveGroupsMode ? 'flex' : 'none';
+  filterBar.querySelectorAll('button').forEach(btn => {
+    btn.className = 'btn btn-sm ' + (btn.dataset.filter === groupOpenFilter ? 'btn-blue' : 'btn-ghost');
+  });
 
   if (!allGroups.length) {
     listEl.innerHTML = liveGroupsMode
@@ -1747,16 +1765,28 @@ function renderGroups() {
   counter.textContent = `${selectedGroups.length} grupo(s) selecionado(s) para receber ofertas`;
   counter.style.color = 'var(--muted)';
 
+  const searchTerm = (document.getElementById('group-search').value || '').trim().toLowerCase();
+  let filtered = allGroups;
+  if (searchTerm) filtered = filtered.filter(g => (g.name || '').toLowerCase().includes(searchTerm));
+  if (liveGroupsMode && groupOpenFilter !== 'all') {
+    filtered = filtered.filter(g => groupOpenFilter === 'open' ? g.isOpen !== false : g.isOpen === false);
+  }
+
+  if (!filtered.length) {
+    listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔎</div><p>Nenhum grupo encontrado com esse filtro/busca.</p></div>';
+    return;
+  }
+
   if (liveGroupsMode) {
-    renderLiveGroups(listEl);
+    renderLiveGroups(listEl, filtered);
   } else {
-    renderKnownGroups(listEl);
+    renderKnownGroups(listEl, filtered);
   }
 }
 
-function renderLiveGroups(listEl) {
-  const admins = allGroups.filter(g => g.isAdmin);
-  const members = allGroups.filter(g => !g.isAdmin);
+function renderLiveGroups(listEl, groups) {
+  const admins = groups.filter(g => g.isAdmin);
+  const members = groups.filter(g => !g.isAdmin);
 
   function renderItem(g) {
     const isSel = selectedGroups.includes(g.id);
@@ -1764,7 +1794,7 @@ function renderLiveGroups(listEl) {
       <div class="group-item ${isSel ? 'selected' : ''}" onclick="toggleGroup('${g.id}')">
         <div class="group-check">${isSel ? '✓' : ''}</div>
         <div class="group-info">
-          <div class="group-name">${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOwner ? ' <span class="tag" style="background:#fff3e0;color:var(--orange);">🔑 Criado por você</span>' : ''}</div>
+          <div class="group-name">${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOwner ? ' <span class="tag" style="background:#fff3e0;color:var(--orange);">🔑 Criado por você</span>' : ''}${g.isOpen === false ? ' <span class="tag" style="background:#fdecea;color:var(--red);">🔒 Fechado</span>' : ' <span class="tag" style="background:#e8f8ef;color:var(--green);">🔓 Aberto</span>'}</div>
           <div class="group-meta">${g.participants} participantes</div>
         </div>
         ${isSel ? '<span class="group-count">✓ Selecionado</span>' : ''}
@@ -1793,8 +1823,8 @@ function renderLiveGroups(listEl) {
   listEl.innerHTML = html;
 }
 
-function renderKnownGroups(listEl) {
-  listEl.innerHTML = allGroups.map(g => {
+function renderKnownGroups(listEl, groups) {
+  listEl.innerHTML = groups.map(g => {
     const isSel = selectedGroups.includes(g.id);
     const known = knownGroups.find(k => k.group_id === g.id);
     const sourceLabel = { message: '💬 visto por mensagem', group_join: '🎉 visto na entrada de alguém', group_leave: '👋 visto na saída de alguém', manual: '⌨️ adicionado manualmente' }[known?.source] || '';

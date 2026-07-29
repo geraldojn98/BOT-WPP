@@ -280,7 +280,7 @@ async function getGroups() {
       const isAdmin = meParticipant?.admin === 'admin' || meParticipant?.admin === 'superadmin';
       const ownerIds = [g.owner, g.ownerPn].filter(Boolean).map(jidUserPart);
       const isOwner = ownerIds.some(id => myIds.has(id));
-      return { id: g.id, name: g.subject, participants: g.participants?.length || 0, isAdmin, isOwner };
+      return { id: g.id, name: g.subject, participants: g.participants?.length || 0, isAdmin, isOwner, isOpen: !g.announce };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
