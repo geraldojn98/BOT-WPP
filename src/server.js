@@ -339,8 +339,12 @@ app.delete('/api/history', (req, res) => {
 app.delete('/api/ml-affiliate/session', (req, res) => {
   try {
     const sessionDir = path.join(__dirname, '../data/ml-session');
+    const cookiesFile = path.join(__dirname, '../data/ml-cookies.json');
     if (require('fs').existsSync(sessionDir)) {
       require('fs').rmSync(sessionDir, { recursive: true, force: true });
+    }
+    if (require('fs').existsSync(cookiesFile)) {
+      require('fs').rmSync(cookiesFile, { force: true });
     }
     res.json({ ok: true });
   } catch (err) {

@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const ML_SESSION_DIR = path.join(__dirname, '../data/ml-session');
+const COOKIES_FILE = path.join(__dirname, '../data/ml-cookies.json');
 const LINKBUILDER_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder';
 
 let _browser = null;
@@ -21,15 +22,20 @@ async function ensureBrowser() {
     }
   }
 
-  if (!fs.existsSync(ML_SESSION_DIR)) {
+  const hasCookies = fs.existsSync(COOKIES_FILE);
+  if (!hasCookies && !fs.existsSync(ML_SESSION_DIR)) {
     throw new Error('ML_NOT_LOGGED_IN');
   }
 
   const launchOpts = {
     headless: true,
-    userDataDir: ML_SESSION_DIR,
     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
   };
+  // Perfil persistido (data/ml-session) só é usado como fallback legado — cookies
+  // salvos por um Chrome do Windows são criptografados com DPAPI e não podem ser
+  // lidos por um Chrome rodando em Linux (ex: container do Railway), então o
+  // caminho preferido é sempre re-injetar os cookies (já descriptografados) via CDP.
+  if (!hasCookies) launchOpts.userDataDir = ML_SESSION_DIR;
   if (process.env.PUPPETEER_EXECUTABLE_PATH) launchOpts.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
   _browser = await puppeteer.launch(launchOpts);
 
@@ -37,6 +43,12 @@ async function ensureBrowser() {
   await _page.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   );
+
+  if (hasCookies) {
+    const cookies = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+    const client = await _page.target().createCDPSession();
+    await client.send('Network.setCookies', { cookies });
+  }
 
   await _page.goto(LINKBUILDER_URL, { waitUntil: 'networkidle2', timeout: 30000 });
 
@@ -147,8 +159,11 @@ async function setupMlSession() {
         const url = page.url();
         if (url.includes('linkbuilder') && !url.includes('login') && !url.includes('/jms/')) {
           clearInterval(check);
+          const client = await page.target().createCDPSession();
+          const { cookies } = await client.send('Network.getAllCookies');
+          fs.writeFileSync(COOKIES_FILE, JSON.stringify(cookies, null, 2));
           await browser.close();
-          console.log('[MLAffiliate] ✅ Login detectado! Sessão salva.');
+          console.log(`[MLAffiliate] ✅ Login detectado! Sessão salva (${cookies.length} cookies exportados para ml-cookies.json).`);
           // Reinicia o browser headless na próxima chamada
           _browser = null;
           _page = null;
@@ -165,7 +180,7 @@ async function setupMlSession() {
 }
 
 function isSessionReady() {
-  return fs.existsSync(ML_SESSION_DIR);
+  return fs.existsSync(COOKIES_FILE) || fs.existsSync(ML_SESSION_DIR);
 }
 
 module.exports = { generateMeliLink, setupMlSession, isSessionReady };

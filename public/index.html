@@ -2161,7 +2161,7 @@ async function checkMlAffiliateStatus() {
 }
 
 async function disconnectMlAffiliate() {
-  if (!confirm('Desconectar a conta de afiliados?\n\n⚠️ Se este bot está rodando na nuvem (Railway), reconectar NÃO é simples: o login precisa de navegador visível, que só funciona rodando localmente no seu PC. Depois de fazer login local, é preciso reenviar a pasta data/ml-session pro volume da nuvem manualmente.\n\nSó desconecte se realmente quiser trocar de conta de afiliado.')) return;
+  if (!confirm('Desconectar a conta de afiliados?\n\n⚠️ Se este bot está rodando na nuvem (Railway), reconectar NÃO é simples: o login precisa de navegador visível, que só funciona rodando localmente no seu PC. Depois de fazer login local, é preciso reenviar o arquivo data/ml-cookies.json pro volume da nuvem manualmente (veja DEPLOY.md).\n\nSó desconecte se realmente quiser trocar de conta de afiliado.')) return;
   const res = await fetch('/api/ml-affiliate/session', { method: 'DELETE' });
   const data = await res.json();
   if (data.ok) { toast('✅ Afiliado desconectado. Conecte uma nova conta quando quiser.'); checkMlAffiliateStatus(); }

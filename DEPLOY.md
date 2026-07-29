@@ -100,27 +100,45 @@ Para controlar o bot direto do ícone na tela inicial do smartphone:
 
 O login do afiliado ML requer um navegador visível — isso só funciona localmente.
 
+Depois do login local, o bot exporta automaticamente os cookies da sessão (já
+descriptografados, via CDP) para `data/ml-cookies.json`. **É só esse arquivo que
+precisa ir para o Railway** — não a pasta `data/ml-session/` inteira.
+
+> Por quê: o Chrome criptografa os cookies salvos em disco com uma chave do
+> sistema operacional (DPAPI no Windows). Copiar a pasta `ml-session/` gerada
+> no Windows direto pro container Linux do Railway **não funciona** — os
+> arquivos existem, mas o Chrome do Linux não consegue decifrá-los, então o
+> bot silenciosamente cai pra "não logado". Injetar os cookies já decifrados
+> via `ml-cookies.json` resolve isso pra sempre, além de ser um arquivo bem
+> menor e sem risco de ficar travado por outro processo.
+
 **Fluxo recomendado:**
 1. Execute o bot localmente (`npm start`)
 2. Vá em **Configurações → Conectar Afiliados ML** e faça o login
-3. Após login, a sessão fica salva em `data/ml-session/`
-4. Copie essa pasta para o volume do Railway via Railway CLI (comando testado e funcional em julho/2026 — a sintaxe da CLI muda com frequência, ajuste se necessário):
+3. Após login, `data/ml-cookies.json` é gerado automaticamente
+4. Faça upload desse arquivo para o volume do Railway via CLI (comando testado e funcional em julho/2026 — a sintaxe da CLI muda com frequência, ajuste se necessário):
 
 ```bash
 npm install -g @railway/cli
 railway login
 railway link   # se ainda não estiver linkado ao projeto nesta pasta
 
-# IMPORTANTE: feche qualquer processo Chrome/Puppeteer local que esteja usando
-# data/ml-session antes de copiar (senão alguns arquivos como Cookies ficam
-# travados) — feche o painel/servidor local, ou mate os processos chrome.exe
-# que referenciam "ml-session" na linha de comando.
-
 railway volume --service <nome-do-servico> files --volume <nome-do-volume> \
-  upload ./data/ml-session / --overwrite
+  upload ./data/ml-cookies.json /ml-cookies.json --overwrite
+
+railway restart --service <nome-do-servico> --yes
 ```
 
-> ⚠️ **Cuidado com o botão "Desconectar afiliado" no painel**: ele apaga a pasta `ml-session` por completo. Na nuvem, reconectar exige repetir esse fluxo manual (login local + reupload) — **não é auto-serviço como localmente**, já que "Conectar Afiliados ML" precisa de navegador visível e é bloqueado automaticamente quando `NODE_ENV=production`. Só desconecte se for realmente trocar de conta.
+> ⚠️ **Cuidado com o botão "Desconectar afiliado" no painel**: ele apaga
+> `ml-cookies.json` (e a pasta `ml-session` legada, se existir). Na nuvem,
+> reconectar exige repetir esse fluxo manual (login local + reupload) — **não
+> é auto-serviço como localmente**, já que "Conectar Afiliados ML" precisa de
+> navegador visível e é bloqueado automaticamente quando `NODE_ENV=production`.
+> Só desconecte se for realmente trocar de conta.
+>
+> Os cookies do ML duram bastante tempo (anos), mas se um dia a sessão cair
+> na nuvem, repita o mesmo fluxo: login local → `ml-cookies.json` novo →
+> reupload → restart.
 
 ---
 
