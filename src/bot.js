@@ -99,6 +99,26 @@ async function initWhatsApp(io) {
   });
 }
 
+// Calcula hora/minuto/dia-da-semana "agora" no fuso configurado, em vez de usar o fuso
+// do servidor diretamente — necessário porque o container do Railway roda em UTC, então
+// comparar new Date().getHours() direto disparava os posts nos horários errados.
+function getNowInTimezone(tz) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit', weekday: 'short',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  const weekdayMap = { Sun: '0', Mon: '1', Tue: '2', Wed: '3', Thu: '4', Fri: '5', Sat: '6' };
+  // Alguns runtimes ICU retornam "24" em vez de "00" pra meia-noite com hour12:false
+  const hh = map.hour === '24' ? '00' : map.hour;
+  return {
+    hh, mm: map.minute, day: weekdayMap[map.weekday],
+    date: `${map.year}-${map.month}-${map.day}`,
+    monthDay: `${map.month}/${map.day}`,
+  };
+}
+
 function startCron(io) {
   if (cronJob) cronJob.stop();
 
@@ -114,12 +134,10 @@ function startCron(io) {
   cronJob = cron.schedule('* * * * *', async () => {
     const timesRaw = db.getSetting('post_times') || '09:00,12:00,18:00';
     const daysRaw  = db.getSetting('post_days')  || '*';
+    const timezone = db.getSetting('bot_timezone') || 'America/Sao_Paulo';
 
-    const now = new Date();
-    const hh  = String(now.getHours()).padStart(2, '0');
-    const mm  = String(now.getMinutes()).padStart(2, '0');
+    const { hh, mm, day: currentDay } = getNowInTimezone(timezone);
     const currentTime = `${hh}:${mm}`;
-    const currentDay  = String(now.getDay()); // 0=Dom ... 6=Sáb
 
     const times = timesRaw.split(',').map(t => t.trim()).filter(Boolean);
     const days  = daysRaw === '*' ? null : daysRaw.split(',').map(d => d.trim());
@@ -857,11 +875,9 @@ async function checkScheduledMessages(io) {
   const messages = db.getAllScheduledMessages().filter(m => m.active);
   if (!messages.length) return;
 
-  const now = new Date();
-  const today = now.toISOString().slice(0, 10); // YYYY-MM-DD
-  const currentTime = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-  const currentDay = String(now.getDay());
-  const monthDay = `${String(now.getMonth()+1).padStart(2,'0')}/${String(now.getDate()).padStart(2,'0')}`;
+  const timezone = db.getSetting('bot_timezone') || 'America/Sao_Paulo';
+  const { hh, mm, day: currentDay, date: today, monthDay } = getNowInTimezone(timezone);
+  const currentTime = `${hh}:${mm}`;
 
   for (const msg of messages) {
     try {
@@ -908,9 +924,10 @@ async function checkScheduledMessages(io) {
 
       if (!text) {
         if (msg.type === 'ai') {
+          const [yyyy, mo, dd] = today.split('-');
           text = await generateCustomMessage(msg.ai_prompt || '', {
-            date: now.toLocaleDateString('pt-BR'),
-            dayName: DAY_NAMES[now.getDay()],
+            date: `${dd}/${mo}/${yyyy}`,
+            dayName: DAY_NAMES[Number(currentDay)],
           });
         } else {
           text = msg.message_text || '';

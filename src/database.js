@@ -52,6 +52,7 @@ function initSchema() {
 
   const defaults = [
     ['cron_schedule', '0 9,12,18 * * *'],
+    ['bot_timezone', 'America/Sao_Paulo'],
     ['max_posts_per_day', '6'],
     ['whatsapp_group_id', ''],
     ['whatsapp_group_ids', ''],

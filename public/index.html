@@ -711,6 +711,22 @@
           </div>
         </div>
 
+        <!-- FUSO HORÁRIO -->
+        <div class="form-group">
+          <div class="form-label">🌎 Fuso horário do robô</div>
+          <div class="form-desc">
+            Os horários acima são interpretados nesse fuso. Se o bot estiver rodando na nuvem
+            (o servidor usa UTC por padrão), os posts podem sair na hora errada até você configurar isso certinho.
+          </div>
+          <select name="bot_timezone" id="bot-timezone-select">
+            <option value="America/Noronha">Fernando de Noronha (UTC-2)</option>
+            <option value="America/Sao_Paulo" selected>Brasília / SP / RJ / Sul / Nordeste (UTC-3)</option>
+            <option value="America/Manaus">Amazonas (UTC-4)</option>
+            <option value="America/Rio_Branco">Acre (UTC-5)</option>
+            <option value="UTC">UTC (horário do servidor, sem ajuste)</option>
+          </select>
+        </div>
+
         <!-- PREVIEW DO CRON -->
         <div class="cron-preview" id="cron-preview">
           <span>⚙️ Agendamento configurado:</span> <strong id="cron-preview-text">—</strong>
