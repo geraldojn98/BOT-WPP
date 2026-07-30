@@ -217,9 +217,15 @@
         z-index: 100;
         box-shadow: 0 -2px 12px rgba(0,0,0,0.08);
         padding-bottom: env(safe-area-inset-bottom);
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
       }
+      #mobile-nav::-webkit-scrollbar { display: none; }
       #mobile-nav button {
-        flex: 1;
+        flex: 0 0 auto;
+        width: 76px;
         border: none;
         background: none;
         padding: 10px 4px 8px;
@@ -1502,7 +1508,10 @@ function showPage(name, btn) {
 function setMobileNav(name) {
   document.querySelectorAll('#mobile-nav button').forEach(b => b.classList.remove('active'));
   const btn = document.getElementById('mnav-' + name);
-  if (btn) btn.classList.add('active');
+  if (btn) {
+    btn.classList.add('active');
+    btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
 }
 
 // ===== MODAL MENSAGEM =====
