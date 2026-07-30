@@ -285,6 +285,7 @@
   <button class="nav-btn" onclick="showPage('instagram', this)">📸 Instagram</button>
   <button class="nav-btn" onclick="showPage('products', this)">📦 Produtos</button>
   <button class="nav-btn" onclick="showPage('history', this)">📋 Histórico</button>
+  <button class="nav-btn" onclick="showPage('logs', this)">🪵 Histórico Log</button>
   <button class="nav-btn" onclick="showPage('settings', this)">⚙️ Configurações</button>
 </nav>
 
@@ -662,6 +663,28 @@
     </div>
   </div>
 
+  <!-- ===== HISTÓRICO LOG ===== -->
+  <div class="page" id="page-logs">
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div class="card-title" style="margin-bottom:0"><span class="icon">🪵</span> Histórico Log</div>
+        <button class="btn btn-red btn-sm" onclick="clearLogs()">🗑️ Limpar log</button>
+      </div>
+      <div class="hint">
+        Registro de eventos e erros do robô: posts que não saíram, falhas ao gerar link de afiliado,
+        desconexões do WhatsApp, mensagens agendadas que falharam etc. Use pra entender rápido o que
+        aconteceu quando algo parecer errado (ex: um post programado que não saiu no horário).
+      </div>
+      <div id="log-filter-buttons" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm" data-log-filter="" onclick="setLogFilter('')">Todos</button>
+        <button type="button" class="btn btn-sm" data-log-filter="error" onclick="setLogFilter('error')">🔴 Erros</button>
+        <button type="button" class="btn btn-sm" data-log-filter="warning" onclick="setLogFilter('warning')">🟡 Avisos</button>
+        <button type="button" class="btn btn-sm" data-log-filter="info" onclick="setLogFilter('info')">🔵 Info</button>
+      </div>
+      <div id="logs-list"></div>
+    </div>
+  </div>
+
   <!-- ===== CONFIGURAÇÕES ===== -->
   <div class="page" id="page-settings">
     <form id="settings-form" onsubmit="saveSettings(event)">
@@ -867,6 +890,9 @@
   </button>
   <button id="mnav-history" onclick="showPage('history', this); setMobileNav('history')">
     <span class="nav-icon">📋</span>Histórico
+  </button>
+  <button id="mnav-logs" onclick="showPage('logs', this); setMobileNav('logs')">
+    <span class="nav-icon">🪵</span>Log
   </button>
   <button id="mnav-settings" onclick="showPage('settings', this); setMobileNav('settings')">
     <span class="nav-icon">⚙️</span>Config
@@ -1463,6 +1489,7 @@ function showPage(name, btn) {
   setMobileNav(name);
   if (name === 'products') loadProducts();
   if (name === 'history') loadHistory();
+  if (name === 'logs') loadLogs();
   if (name === 'settings') loadSettings();
   if (name === 'dashboard') loadDashboard();
   if (name === 'groups') loadGroups();
@@ -2047,6 +2074,58 @@ async function loadHistory() {
       <div class="history-text">${(h.message_text || '').slice(0, 120)}${(h.message_text?.length||0) > 120 ? '...' : ''}</div>
     </div>
   `).join('');
+}
+
+// ===== HISTÓRICO LOG =====
+let logFilter = '';
+
+function setLogFilter(level) {
+  logFilter = level;
+  loadLogs();
+}
+
+async function loadLogs() {
+  document.querySelectorAll('#log-filter-buttons button').forEach(btn => {
+    btn.className = 'btn btn-sm ' + (btn.dataset.logFilter === logFilter ? 'btn-blue' : 'btn-ghost');
+  });
+
+  const qs = logFilter ? `?limit=200&level=${logFilter}` : '?limit=200';
+  const logs = await fetch('/api/logs' + qs).then(r => r.json()).catch(() => []);
+  const el = document.getElementById('logs-list');
+  if (!logs.length) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">🪵</div><p>Nenhum evento registrado ainda.</p></div>';
+    return;
+  }
+  const levelInfo = {
+    error:   { icon: '🔴', label: 'Erro',  color: 'var(--red)',    bg: '#fdecea' },
+    warning: { icon: '🟡', label: 'Aviso', color: 'var(--orange)', bg: '#fff3e0' },
+    info:    { icon: '🔵', label: 'Info',  color: 'var(--blue)',   bg: '#e8f4fd' },
+  };
+  const categoryLabel = {
+    post: '📦 Postagem', whatsapp: '📱 WhatsApp', ml_affiliate: '🔗 Afiliado ML',
+    scheduled_message: '📅 Mensagem agendada', instagram: '📸 Instagram',
+  };
+  el.innerHTML = logs.map(log => {
+    const lv = levelInfo[log.level] || levelInfo.info;
+    return `
+      <div class="history-item">
+        <div class="history-meta">
+          <span style="font-size:0.78rem;color:var(--muted);">📅 ${fmt(log.created_at)}</span>
+          <span class="tag" style="background:${lv.bg};color:${lv.color};">${lv.icon} ${lv.label}</span>
+          <span style="font-size:0.78rem;font-weight:600;">${categoryLabel[log.category] || log.category}</span>
+        </div>
+        <div class="history-text">${log.message}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function clearLogs() {
+  if (!confirm('Apagar todo o histórico log? Esta ação não pode ser desfeita.')) return;
+  const res = await fetch('/api/logs', { method: 'DELETE' });
+  const data = await res.json();
+  if (data.ok) { toast('🗑️ Log limpo!'); loadLogs(); }
+  else toast('❌ ' + (data.error || 'Erro'), 'err');
 }
 
 // ===== SCHEDULER =====

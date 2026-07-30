@@ -192,6 +192,19 @@ app.get('/api/history', (req, res) => {
   res.json(db.getPostHistory(limit));
 });
 
+// ===== HISTÓRICO LOG (eventos/erros do robô) =====
+
+app.get('/api/logs', (req, res) => {
+  const limit = parseInt(req.query.limit) || 200;
+  const level = req.query.level || null;
+  res.json(db.getLogs(limit, level));
+});
+
+app.delete('/api/logs', (req, res) => {
+  db.clearLogs();
+  res.json({ ok: true });
+});
+
 // ===== POST AUTOMÁTICO (busca produto no ML e posta) =====
 // DEVE VIR ANTES de /api/post/:id para o Express não confundir "auto" com um ID
 

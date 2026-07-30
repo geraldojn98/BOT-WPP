@@ -59,6 +59,7 @@ async function initWhatsApp(io) {
       botStatus = 'connected';
       qrCodeData = null;
       console.log('[Bot] WhatsApp conectado!');
+      db.addLog('info', 'whatsapp', 'WhatsApp conectado.');
       if (io) io.emit('status', getStatus());
       startCron(io);
     }
@@ -73,9 +74,11 @@ async function initWhatsApp(io) {
       if (statusCode === DisconnectReason.loggedOut) {
         // Sessão invalidada pelo próprio WhatsApp (ex: removido dos aparelhos conectados) —
         // limpa credenciais salvas, só reconecta com um novo QR Code.
+        db.addLog('error', 'whatsapp', 'Sessão do WhatsApp encerrada pelo próprio WhatsApp (aparelho removido) — é preciso escanear um novo QR Code.');
         const fs = require('fs');
         try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
       } else if (!manualDisconnect) {
+        db.addLog('warning', 'whatsapp', `WhatsApp desconectado (código ${statusCode || '?'}). Tentando reconectar automaticamente...`);
         console.log('[Bot] Tentando reconectar automaticamente...');
         initWhatsApp(io).catch(err => console.error('[Bot] Falha ao reconectar:', err.message));
       }
@@ -158,29 +161,36 @@ function startCron(io) {
 
 /**
  * Busca um produto pra postar: tenta o Mercado Livre primeiro. Se o ML bloquear/falhar
- * (fetchPromoProducts lança erro — bloqueio antibot, rede, etc.), cai automaticamente pra
- * um produto aleatório já cadastrado no sistema, evitando repetir um postado recentemente.
- * Retorna { product: null, fallback: false } se realmente não achou nada em nenhuma fonte
- * (sem lançar erro) — só lança se o ML falhou E não há nenhum produto cadastrado disponível.
+ * (fetchPromoProducts lança erro — bloqueio antibot, rede, etc.) OU simplesmente não
+ * retornar nenhum produto elegível agora (sem erro, só nada bateu os filtros no momento —
+ * foi o que aconteceu no post das 12h perdido), cai automaticamente pra um produto
+ * aleatório já cadastrado no sistema, evitando repetir um postado recentemente.
+ * Retorna { product: null, fallback: false } só se realmente não achou nada em nenhuma
+ * fonte — só lança erro se o ML falhou E não há nenhum produto cadastrado disponível.
  */
 async function resolveProductToPost({ minDiscount, keywords, priceMin, priceMax, excludeIds }) {
+  let mlError = null;
   try {
     const promos = await fetchPromoProducts({ minDiscount, keywords, priceMin, priceMax, limit: 1, excludeIds });
-    return { product: promos[0] || null, fallback: false };
+    if (promos[0]) return { product: promos[0], fallback: false };
+    console.log('[Post] ML não retornou nenhum produto elegível agora, tentando fallback cadastrado.');
   } catch (err) {
+    mlError = err;
     console.error('[Post] Falha ao buscar no ML, tentando produto de fallback já cadastrado:', err.message);
-    const eligible = db.getActiveProducts().filter(p => {
-      if (p.ml_id && excludeIds.has(p.ml_id)) return false;
-      if (p.ml_id && db.wasPostedRecentlyByMlId(p.ml_id, 24)) return false;
-      return true;
-    });
-    if (!eligible.length) {
-      throw new Error(`${err.message} Além disso, não há produtos cadastrados disponíveis pra usar como alternativa.`);
-    }
-    const chosen = eligible[Math.floor(Math.random() * eligible.length)];
-    console.log(`[Post] 🔁 Usando produto de fallback: ${chosen.title}`);
-    return { product: chosen, fallback: true };
   }
+
+  const eligible = db.getActiveProducts().filter(p => {
+    if (p.ml_id && excludeIds.has(p.ml_id)) return false;
+    if (p.ml_id && db.wasPostedRecentlyByMlId(p.ml_id, 24)) return false;
+    return true;
+  });
+  if (!eligible.length) {
+    if (mlError) throw new Error(`${mlError.message} Além disso, não há produtos cadastrados disponíveis pra usar como alternativa.`);
+    return { product: null, fallback: false };
+  }
+  const chosen = eligible[Math.floor(Math.random() * eligible.length)];
+  console.log(`[Post] 🔁 Usando produto de fallback: ${chosen.title}`);
+  return { product: chosen, fallback: true };
 }
 
 async function runPost(maxPerDay, io) {
@@ -194,6 +204,7 @@ async function runPost(maxPerDay, io) {
     const groupIds = resolveOfferGroupIds();
     if (!groupIds.length) {
       console.log('[Post] Nenhum grupo do WhatsApp configurado.');
+      db.addLog('warning', 'post', 'Post cancelado: nenhum grupo do WhatsApp configurado para receber ofertas.');
       return;
     }
 
@@ -216,11 +227,13 @@ async function runPost(maxPerDay, io) {
       ({ product, fallback } = await resolveProductToPost({ minDiscount, keywords, priceMin, priceMax, excludeIds }));
     } catch (err) {
       console.error('[Post] ML e fallback falharam:', err.message);
+      db.addLog('error', 'post', `Post não enviado: ${err.message}`);
       return;
     }
 
     if (!product) {
       console.log('[Post] Nenhum produto encontrado no ML agora. Tentará novamente no próximo horário.');
+      db.addLog('warning', 'post', 'Post não enviado: nenhum produto elegível no Mercado Livre nem no cadastro neste horário.');
       return;
     }
 
@@ -241,11 +254,16 @@ async function runPost(maxPerDay, io) {
     const finalText = `${link}\n\n${text}`;
 
     const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
-    if (failed.length) console.error(`[Post] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+    if (failed.length) {
+      console.error(`[Post] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+      db.addLog('warning', 'post', `"${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
+    }
     db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null);
+    db.addLog('info', 'post', `Post enviado: "${product.title}" para ${sent.length} grupo(s)${fallback ? ' [produto de fallback]' : ''}.`);
     if (io) io.emit('post_sent', { product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
   } catch (err) {
     console.error('[Post] Erro ao enviar:', err.message);
+    db.addLog('error', 'post', `Post não enviado: ${err.message}`);
   }
 }
 
@@ -940,12 +958,16 @@ async function checkScheduledMessages(io) {
       }
 
       const { failed } = await sendToGroups(groupIds, text.trim(), null);
-      if (failed.length) console.error(`[ScheduledMsg] ⚠️ "${msg.name}" falhou em ${failed.length}/${groupIds.length} grupo(s)`);
+      if (failed.length) {
+        console.error(`[ScheduledMsg] ⚠️ "${msg.name}" falhou em ${failed.length}/${groupIds.length} grupo(s)`);
+        db.addLog('warning', 'scheduled_message', `Mensagem agendada "${msg.name}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
+      }
       db.logScheduledMessageFired(msg.id, today);
       if (io) io.emit('scheduled_msg_sent', { name: msg.name, text });
 
     } catch (err) {
       console.error(`[ScheduledMsg] Erro em "${msg.name}":`, err.message);
+      db.addLog('error', 'scheduled_message', `Mensagem agendada "${msg.name}" não foi enviada: ${err.message}`);
     }
   }
 }

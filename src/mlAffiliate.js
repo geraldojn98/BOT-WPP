@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer');
 const path = require('path');
 const fs = require('fs');
+const db = require('./database');
 
 const ML_SESSION_DIR = path.join(__dirname, '../data/ml-session');
 const COOKIES_FILE = path.join(__dirname, '../data/ml-cookies.json');
@@ -113,8 +114,10 @@ async function generateMeliLink(productUrl) {
   } catch (err) {
     if (err.message === 'ML_NOT_LOGGED_IN') {
       console.warn('[MLAffiliate] ⚠️  Sessão ML não encontrada. Acesse o painel web e clique em "Conectar Afiliados ML".');
+      db.addLog('warning', 'ml_affiliate', 'Link meli.la não gerado: sessão do afiliado ML não encontrada/expirada.');
     } else {
       console.error('[MLAffiliate] Erro:', err.message);
+      db.addLog('error', 'ml_affiliate', `Link meli.la não gerado: ${err.message}`);
       // Reinicia o browser na próxima chamada
       _browser = null;
       _page = null;

@@ -48,6 +48,14 @@ function initSchema() {
       ml_id TEXT PRIMARY KEY,
       blocked_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS event_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      level TEXT NOT NULL,
+      category TEXT NOT NULL,
+      message TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   const defaults = [
@@ -138,6 +146,20 @@ function getPostHistory(limit = 50) {
     ORDER BY ph.sent_at DESC LIMIT ?
   `).all(limit);
 }
+// ===== LOG DE EVENTOS DO ROBÔ (pra aba Histórico Log) =====
+function addLog(level, category, message) {
+  db.prepare('INSERT INTO event_log (level, category, message) VALUES (?, ?, ?)').run(level, category, message);
+  // Mantém só os últimos 500 eventos — é um log operacional, não histórico permanente.
+  db.prepare('DELETE FROM event_log WHERE id NOT IN (SELECT id FROM event_log ORDER BY id DESC LIMIT 500)').run();
+}
+function getLogs(limit = 200, level = null) {
+  if (level) return db.prepare('SELECT * FROM event_log WHERE level = ? ORDER BY id DESC LIMIT ?').all(level, limit);
+  return db.prepare('SELECT * FROM event_log ORDER BY id DESC LIMIT ?').all(limit);
+}
+function clearLogs() {
+  return db.prepare('DELETE FROM event_log').run();
+}
+
 function getPostsToday() {
   return db.prepare("SELECT COUNT(*) as count FROM post_history WHERE date(sent_at) = date('now')").get();
 }
@@ -803,6 +825,7 @@ module.exports = {
   getAllProducts, getActiveProducts, getProductById, getProductByMlId,
   addProduct, updateProduct, deleteProduct, toggleProduct,
   addPostHistory, getPostHistory, getPostsToday, wasPostedRecently, wasPostedRecentlyByMlId, clearHistory,
+  addLog, getLogs, clearLogs,
   getSetting, setSetting, getAllSettings,
   isBlocked, unblockProduct,
   getAllScheduledMessages, getScheduledMessageById, addScheduledMessage, updateScheduledMessage,
