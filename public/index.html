@@ -2161,7 +2161,13 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 // ===== UTILS =====
 function fmt(str) {
   if (!str) return '–';
-  return new Date(str).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  // O banco grava os horários em UTC no formato "YYYY-MM-DD HH:MM:SS" (sem "Z" nem
+  // offset). O construtor Date do navegador interpreta esse formato como hora LOCAL,
+  // não UTC — então o horário aparecia sem nenhum ajuste (ex: 3h adiantado em Brasília).
+  // Normaliza pro formato ISO com "Z" pra forçar a interpretação correta como UTC,
+  // e o toLocaleString já converte pro fuso do navegador de quem está vendo o painel.
+  const iso = /Z$|[+-]\d{2}:?\d{2}$/.test(str) ? str : str.replace(' ', 'T') + 'Z';
+  return new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 // ===== ML AFFILIATE SESSION =====
