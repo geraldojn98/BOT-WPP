@@ -194,6 +194,13 @@ async function resolveProductToPost({ minDiscount, keywords, priceMin, priceMax,
   return { product: chosen, fallback: true };
 }
 
+// Descreve, pra fins de log, de onde veio o produto que acabou de ser postado —
+// o usuário quer sempre saber se foi um achado novo no ML ou algo reaproveitado.
+function productOriginLabel(fallback, isNew) {
+  if (fallback) return 'produto de fallback (ML sem resultado agora — usado um produto já cadastrado aleatório)';
+  return isNew ? 'produto novo (encontrado agora no Mercado Livre)' : 'produto já cadastrado (encontrado de novo no Mercado Livre)';
+}
+
 async function runPost(profile, io) {
   const tag = `[Perfil "${profile.name}"]`;
   try {
@@ -240,18 +247,21 @@ async function runPost(profile, io) {
       return;
     }
 
+    let isNew = false;
     if (!fallback) {
       const existing = db.getProductByMlId(product.ml_id);
       if (existing) {
         product.id = existing.id;
       } else {
+        isNew = true;
         const { catalog_id, ...productToSave } = product;
         const result = db.addProduct(productToSave);
         product.id = result.lastInsertRowid;
       }
     }
+    const originLabel = productOriginLabel(fallback, isNew);
 
-    console.log(`[Post] ${tag} Gerando texto para: ${product.title} (${product.discount_percent}% off)${fallback ? ' [fallback]' : ''}`);
+    console.log(`[Post] ${tag} Gerando texto para: ${product.title} (${product.discount_percent}% off) — ${originLabel}`);
     const text = await generatePostText(product, profile.claude_prompt || null);
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
@@ -262,8 +272,8 @@ async function runPost(profile, io) {
       db.addLog('warning', 'post', `${tag} "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
     }
     db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
-    db.addLog('info', 'post', `${tag} Post enviado: "${product.title}" para ${sent.length} grupo(s)${fallback ? ' [produto de fallback]' : ''}.`);
-    if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
+    db.addLog('info', 'post', `${tag} Post enviado: "${product.title}" para ${sent.length} grupo(s) — ${originLabel}.`);
+    if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback, isNew });
   } catch (err) {
     console.error(`[Post] ${tag} Erro ao enviar:`, err.message);
     db.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
@@ -286,10 +296,18 @@ async function sendManualPost(productId, profileId, io) {
   const link = product.affiliate_url || product.url;
   const finalText = `${link}\n\n${text}`;
 
+  const tag = `[Perfil "${profile.name}"] [manual - Produtos]`;
   const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
   db.addPostHistory(product.id, finalText, 'manual', product.ml_id || null, profile.id);
-  if (!sent.length) throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);
-  if (failed.length) console.error(`[ManualPost] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+  if (!sent.length) {
+    db.addLog('error', 'post', `${tag} "${product.title}" não foi enviado a nenhum grupo (falhou em todos os ${failed.length}). produto já cadastrado (selecionado manualmente na aba Produtos).`);
+    throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);
+  }
+  if (failed.length) {
+    console.error(`[ManualPost] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+    db.addLog('warning', 'post', `${tag} "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s). produto já cadastrado (selecionado manualmente na aba Produtos).`);
+  }
+  db.addLog('info', 'post', `${tag} Post enviado: "${product.title}" para ${sent.length} grupo(s) — produto já cadastrado (selecionado manualmente na aba Produtos).`);
 
   return finalText;
 }
@@ -816,51 +834,67 @@ async function runAutoPost(io, profileId) {
 
   const profile = db.getPostProfileById(profileId);
   if (!profile) throw new Error('Perfil de postagem não encontrado.');
+  const tag = `[Perfil "${profile.name}"] [manual]`;
 
-  const groupIds = resolveProfileGroupIds(profile);
-  if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
+  try {
+    const groupIds = resolveProfileGroupIds(profile);
+    if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
 
-  const minDiscount = parseInt(profile.min_discount) || 20;
-  const keywords = profile.search_keywords || '';
-  const priceMin = profile.price_min || null;
-  const priceMax = profile.price_max || null;
+    const minDiscount = parseInt(profile.min_discount) || 20;
+    const keywords = profile.search_keywords || '';
+    const priceMin = profile.price_min || null;
+    const priceMax = profile.price_max || null;
 
-  const recentIds = new Set(db.getPostHistory(200).map(h => h.ml_id).filter(Boolean));
-  const excludeIds = new Set([...recentIds].filter(id => db.wasPostedRecentlyByMlId(id, 24) || db.isBlocked(id)));
+    const recentIds = new Set(db.getPostHistory(200).map(h => h.ml_id).filter(Boolean));
+    const excludeIds = new Set([...recentIds].filter(id => db.wasPostedRecentlyByMlId(id, 24) || db.isBlocked(id)));
 
-  const { product, fallback } = await resolveProductToPost({ minDiscount, keywords, priceMin, priceMax, excludeIds });
-  if (!product) throw new Error('Nenhum produto em promoção encontrado no momento. Tente novamente em instantes ou cadastre produtos manualmente.');
+    const { product, fallback } = await resolveProductToPost({ minDiscount, keywords, priceMin, priceMax, excludeIds });
+    if (!product) throw new Error('Nenhum produto em promoção encontrado no momento. Tente novamente em instantes ou cadastre produtos manualmente.');
 
-  if (!fallback) {
-    // affiliate_url já vem com meli.la do fetchPromoProducts — não sobrescrever
-    const existing = db.getProductByMlId(product.ml_id);
-    if (existing) {
-      product.id = existing.id;
-      product.affiliate_url = existing.affiliate_url || product.affiliate_url;
-    } else {
-      const { catalog_id, ...productToSave } = product;
-      const result = db.addProduct(productToSave);
-      product.id = result.lastInsertRowid;
+    let isNew = false;
+    if (!fallback) {
+      // affiliate_url já vem com meli.la do fetchPromoProducts — não sobrescrever
+      const existing = db.getProductByMlId(product.ml_id);
+      if (existing) {
+        product.id = existing.id;
+        product.affiliate_url = existing.affiliate_url || product.affiliate_url;
+      } else {
+        isNew = true;
+        const { catalog_id, ...productToSave } = product;
+        const result = db.addProduct(productToSave);
+        product.id = result.lastInsertRowid;
+      }
     }
+    const originLabel = productOriginLabel(fallback, isNew);
+
+    const text = await generatePostText(product, profile.claude_prompt || null);
+    const link = product.affiliate_url || product.url;
+    const finalText = `${link}\n\n${text}`;
+
+    const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
+    db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
+    if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback, isNew });
+
+    if (!sent.length) {
+      db.addLog('error', 'post', `${tag} "${product.title}" não foi enviado a nenhum grupo (falhou em todos os ${failed.length}). ${originLabel}.`);
+      const err = new Error(`O produto foi encontrado, mas o envio falhou para todos os ${failed.length} grupo(s). Erro: ${failed[0]?.error}`);
+      err.__logged = true;
+      throw err;
+    }
+    if (failed.length) {
+      db.addLog('warning', 'post', `${tag} "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s). ${originLabel}.`);
+    }
+    db.addLog('info', 'post', `${tag} Post enviado: "${product.title}" para ${sent.length} grupo(s) — ${originLabel}.`);
+
+    return {
+      ok: true, profile: profile.name, product: product.title, discount: product.discount_percent, text: finalText,
+      groupsSent: sent.length, groupsFailed: failed.length, usedFallback: fallback,
+      warning: failed.length ? `Falhou em ${failed.length} de ${groupIds.length} grupo(s) — veja o log do servidor.` : null,
+    };
+  } catch (err) {
+    if (!err.__logged) db.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
+    throw err;
   }
-
-  const text = await generatePostText(product, profile.claude_prompt || null);
-  const link = product.affiliate_url || product.url;
-  const finalText = `${link}\n\n${text}`;
-
-  const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
-  db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
-  if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
-
-  if (!sent.length) {
-    throw new Error(`O produto foi encontrado, mas o envio falhou para todos os ${failed.length} grupo(s). Erro: ${failed[0]?.error}`);
-  }
-
-  return {
-    ok: true, profile: profile.name, product: product.title, discount: product.discount_percent, text: finalText,
-    groupsSent: sent.length, groupsFailed: failed.length, usedFallback: fallback,
-    warning: failed.length ? `Falhou em ${failed.length} de ${groupIds.length} grupo(s) — veja o log do servidor.` : null,
-  };
 }
 
 async function reconnectWhatsApp(io) {
