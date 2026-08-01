@@ -17,18 +17,18 @@ function getStatus() {
 }
 
 /**
- * Resolve a lista de grupos que devem receber os posts de oferta: une os grupos
- * configurados manualmente (whatsapp_group_ids) com todos os grupos de qualquer
- * série de auto-escala (group_series_groups) — inclusive os já marcados "full",
+ * Resolve a lista de grupos que devem receber os posts de um perfil de postagem: une os
+ * grupos selecionados manualmente (profile.group_ids) com os grupos de cada série de
+ * auto-escala vinculada ao perfil (profile.series_ids) — inclusive os já marcados "full",
  * já que grupos cheios continuam recebendo ofertas, só param de receber leads novos.
- * Sem cap de 5: esse limite existia antes da auto-escala e passaria a quebrar o
- * fluxo assim que uma série ultrapassasse 5 grupos.
+ * Cada perfil só enxerga as séries que ele mesmo vincula (não soma mais todas as séries
+ * do sistema indiscriminadamente, já que agora podem existir vários perfis independentes).
  */
-function resolveOfferGroupIds() {
-  const manualSetting = db.getSetting('whatsapp_group_ids') || db.getSetting('whatsapp_group_id') || '';
-  const manualIds = manualSetting.split(',').map(g => g.trim()).filter(Boolean);
-  const seriesIds = db.getAllGroupSeriesGroupIds();
-  return [...new Set([...manualIds, ...seriesIds])];
+function resolveProfileGroupIds(profile) {
+  const manualIds = (profile.group_ids || '').split(',').map(g => g.trim()).filter(Boolean);
+  const seriesIds = (profile.series_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  const seriesGroupIds = seriesIds.flatMap(sid => db.getGroupSeriesGroups(sid).map(g => g.group_id));
+  return [...new Set([...manualIds, ...seriesGroupIds])];
 }
 
 const AUTH_DIR = './data/baileys-auth';
@@ -125,7 +125,6 @@ function getNowInTimezone(tz) {
 function startCron(io) {
   if (cronJob) cronJob.stop();
 
-  const maxPerDay = parseInt(db.getSetting('max_posts_per_day') || '6');
   const botActive = db.getSetting('bot_active') === '1';
 
   if (!botActive) {
@@ -133,30 +132,32 @@ function startCron(io) {
     return;
   }
 
-  // Roda a cada minuto e checa se o horário atual está na lista configurada
+  // Roda a cada minuto e checa, pra cada perfil de postagem ativo, se o horário atual
+  // bate com o horário configurado daquele perfil — cada perfil tem seus próprios
+  // grupos/horários/filtros, então dois perfis podem disparar em momentos diferentes.
   cronJob = cron.schedule('* * * * *', async () => {
-    const timesRaw = db.getSetting('post_times') || '09:00,12:00,18:00';
-    const daysRaw  = db.getSetting('post_days')  || '*';
     const timezone = db.getSetting('bot_timezone') || 'America/Sao_Paulo';
-
     const { hh, mm, day: currentDay } = getNowInTimezone(timezone);
     const currentTime = `${hh}:${mm}`;
 
-    const times = timesRaw.split(',').map(t => t.trim()).filter(Boolean);
-    const days  = daysRaw === '*' ? null : daysRaw.split(',').map(d => d.trim());
-
-    // Mensagens agendadas verificadas a cada minuto (independente dos horários de produto)
+    // Mensagens agendadas verificadas a cada minuto (independente dos perfis de postagem)
     await checkScheduledMessages(io);
 
-    if (!times.includes(currentTime)) return;
-    if (days && !days.includes(currentDay)) return;
+    const profiles = db.getActivePostProfiles();
+    for (const profile of profiles) {
+      const times = (profile.post_times || '').split(',').map(t => t.trim()).filter(Boolean);
+      const days  = profile.post_days === '*' ? null : (profile.post_days || '').split(',').map(d => d.trim());
 
-    console.log(`[Cron] ⏰ Horário ${currentTime} — executando post...`);
-    await runPost(maxPerDay, io);
+      if (!times.includes(currentTime)) continue;
+      if (days && !days.includes(currentDay)) continue;
+
+      console.log(`[Cron] ⏰ ${currentTime} — executando post do perfil "${profile.name}"...`);
+      await runPost(profile, io);
+    }
   });
 
-  const timesDisplay = db.getSetting('post_times') || '09:00,12:00,18:00';
-  console.log(`[Cron] Agendamento ativo: ${timesDisplay}`);
+  const profiles = db.getActivePostProfiles();
+  console.log(`[Cron] Agendamento ativo: ${profiles.length} perfil(is) de postagem ativo(s).`);
 }
 
 /**
@@ -193,25 +194,27 @@ async function resolveProductToPost({ minDiscount, keywords, priceMin, priceMax,
   return { product: chosen, fallback: true };
 }
 
-async function runPost(maxPerDay, io) {
+async function runPost(profile, io) {
+  const tag = `[Perfil "${profile.name}"]`;
   try {
-    const todayCount = db.getPostsToday().count;
+    const maxPerDay = parseInt(profile.max_posts_per_day) || 6;
+    const todayCount = db.getPostsTodayForProfile(profile.id).count;
     if (todayCount >= maxPerDay) {
-      console.log(`[Post] Limite diário atingido (${todayCount}/${maxPerDay})`);
+      console.log(`[Post] ${tag} Limite diário atingido (${todayCount}/${maxPerDay})`);
       return;
     }
 
-    const groupIds = resolveOfferGroupIds();
+    const groupIds = resolveProfileGroupIds(profile);
     if (!groupIds.length) {
-      console.log('[Post] Nenhum grupo do WhatsApp configurado.');
-      db.addLog('warning', 'post', 'Post cancelado: nenhum grupo do WhatsApp configurado para receber ofertas.');
+      console.log(`[Post] ${tag} Nenhum grupo configurado.`);
+      db.addLog('warning', 'post', `${tag} Post cancelado: nenhum grupo configurado para este perfil.`);
       return;
     }
 
-    const minDiscount = parseInt(db.getSetting('min_discount') || '20');
-    const keywords = db.getSetting('search_keywords') || '';
-    const _pMin = db.getSetting('price_min'); const priceMin = _pMin && parseFloat(_pMin) > 0 ? _pMin : null;
-    const _pMax = db.getSetting('price_max'); const priceMax = _pMax && parseFloat(_pMax) > 0 ? _pMax : null;
+    const minDiscount = parseInt(profile.min_discount) || 20;
+    const keywords = profile.search_keywords || '';
+    const priceMin = profile.price_min && parseFloat(profile.price_min) > 0 ? profile.price_min : null;
+    const priceMax = profile.price_max && parseFloat(profile.price_max) > 0 ? profile.price_max : null;
 
     // 1. Tenta buscar o primeiro produto válido no ML (já exclui os postados recentemente);
     // se o ML bloquear/falhar, resolveProductToPost já cai pra um produto cadastrado aleatório.
@@ -221,19 +224,19 @@ async function runPost(maxPerDay, io) {
     // Monta set de exclusão: postados nas últimas 24h + bloqueados
     const excludeIds = new Set([...recentIds].filter(id => db.wasPostedRecentlyByMlId(id, 24) || db.isBlocked(id)));
 
-    console.log(`[Post] Buscando promoção no ML... desconto>=${minDiscount}% | excluindo ${excludeIds.size} IDs recentes`);
+    console.log(`[Post] ${tag} Buscando promoção no ML... desconto>=${minDiscount}% | excluindo ${excludeIds.size} IDs recentes`);
     let product, fallback;
     try {
       ({ product, fallback } = await resolveProductToPost({ minDiscount, keywords, priceMin, priceMax, excludeIds }));
     } catch (err) {
-      console.error('[Post] ML e fallback falharam:', err.message);
-      db.addLog('error', 'post', `Post não enviado: ${err.message}`);
+      console.error(`[Post] ${tag} ML e fallback falharam:`, err.message);
+      db.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
       return;
     }
 
     if (!product) {
-      console.log('[Post] Nenhum produto encontrado no ML agora. Tentará novamente no próximo horário.');
-      db.addLog('warning', 'post', 'Post não enviado: nenhum produto elegível no Mercado Livre nem no cadastro neste horário.');
+      console.log(`[Post] ${tag} Nenhum produto encontrado no ML agora. Tentará novamente no próximo horário.`);
+      db.addLog('warning', 'post', `${tag} Post não enviado: nenhum produto elegível no Mercado Livre nem no cadastro neste horário.`);
       return;
     }
 
@@ -248,40 +251,43 @@ async function runPost(maxPerDay, io) {
       }
     }
 
-    console.log(`[Post] Gerando texto para: ${product.title} (${product.discount_percent}% off)${fallback ? ' [fallback]' : ''}`);
-    const text = await generatePostText(product);
+    console.log(`[Post] ${tag} Gerando texto para: ${product.title} (${product.discount_percent}% off)${fallback ? ' [fallback]' : ''}`);
+    const text = await generatePostText(product, profile.claude_prompt || null);
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
 
     const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
     if (failed.length) {
-      console.error(`[Post] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
-      db.addLog('warning', 'post', `"${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
+      console.error(`[Post] ${tag} ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+      db.addLog('warning', 'post', `${tag} "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
     }
-    db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null);
-    db.addLog('info', 'post', `Post enviado: "${product.title}" para ${sent.length} grupo(s)${fallback ? ' [produto de fallback]' : ''}.`);
-    if (io) io.emit('post_sent', { product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
+    db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
+    db.addLog('info', 'post', `${tag} Post enviado: "${product.title}" para ${sent.length} grupo(s)${fallback ? ' [produto de fallback]' : ''}.`);
+    if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
   } catch (err) {
-    console.error('[Post] Erro ao enviar:', err.message);
-    db.addLog('error', 'post', `Post não enviado: ${err.message}`);
+    console.error(`[Post] ${tag} Erro ao enviar:`, err.message);
+    db.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
   }
 }
 
-async function sendManualPost(productId, io) {
+async function sendManualPost(productId, profileId, io) {
   if (botStatus !== 'connected') throw new Error('WhatsApp não está conectado.');
 
   const product = db.getProductById(productId);
   if (!product) throw new Error('Produto não encontrado.');
 
-  const groupIds = resolveOfferGroupIds();
-  if (!groupIds.length) throw new Error('Nenhum grupo do WhatsApp configurado.');
+  const profile = profileId ? db.getPostProfileById(profileId) : db.getActivePostProfiles()[0];
+  if (!profile) throw new Error('Nenhum perfil de postagem configurado. Crie um em "🗂️ Perfis de Postagem".');
 
-  const text = await generatePostText(product);
+  const groupIds = resolveProfileGroupIds(profile);
+  if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
+
+  const text = await generatePostText(product, profile.claude_prompt || null);
   const link = product.affiliate_url || product.url;
   const finalText = `${link}\n\n${text}`;
 
   const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
-  db.addPostHistory(product.id, finalText, 'manual', product.ml_id || null);
+  db.addPostHistory(product.id, finalText, 'manual', product.ml_id || null, profile.id);
   if (!sent.length) throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);
   if (failed.length) console.error(`[ManualPost] ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
 
@@ -805,16 +811,19 @@ function cancelCampaign(id) {
 }
 
 // Versão pública do runPost para chamada manual via API (ignora limite diário)
-async function runAutoPost(io) {
+async function runAutoPost(io, profileId) {
   if (botStatus !== 'connected') throw new Error('WhatsApp não está conectado.');
 
-  const groupIds = resolveOfferGroupIds();
-  if (!groupIds.length) throw new Error('Nenhum grupo do WhatsApp configurado.');
+  const profile = db.getPostProfileById(profileId);
+  if (!profile) throw new Error('Perfil de postagem não encontrado.');
 
-  const minDiscount = parseInt(db.getSetting('min_discount') || '20');
-  const keywords = db.getSetting('search_keywords') || '';
-  const priceMin = db.getSetting('price_min') || null;
-  const priceMax = db.getSetting('price_max') || null;
+  const groupIds = resolveProfileGroupIds(profile);
+  if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
+
+  const minDiscount = parseInt(profile.min_discount) || 20;
+  const keywords = profile.search_keywords || '';
+  const priceMin = profile.price_min || null;
+  const priceMax = profile.price_max || null;
 
   const recentIds = new Set(db.getPostHistory(200).map(h => h.ml_id).filter(Boolean));
   const excludeIds = new Set([...recentIds].filter(id => db.wasPostedRecentlyByMlId(id, 24) || db.isBlocked(id)));
@@ -835,20 +844,20 @@ async function runAutoPost(io) {
     }
   }
 
-  const text = await generatePostText(product);
+  const text = await generatePostText(product, profile.claude_prompt || null);
   const link = product.affiliate_url || product.url;
   const finalText = `${link}\n\n${text}`;
 
   const { sent, failed } = await sendToGroups(groupIds, finalText, product.image_url);
-  db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null);
-  if (io) io.emit('post_sent', { product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
+  db.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
+  if (io) io.emit('post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback });
 
   if (!sent.length) {
     throw new Error(`O produto foi encontrado, mas o envio falhou para todos os ${failed.length} grupo(s). Erro: ${failed[0]?.error}`);
   }
 
   return {
-    ok: true, product: product.title, discount: product.discount_percent, text: finalText,
+    ok: true, profile: profile.name, product: product.title, discount: product.discount_percent, text: finalText,
     groupsSent: sent.length, groupsFailed: failed.length, usedFallback: fallback,
     warning: failed.length ? `Falhou em ${failed.length} de ${groupIds.length} grupo(s) — veja o log do servidor.` : null,
   };
@@ -984,7 +993,8 @@ async function broadcastToGroups(text, groupIds) {
 async function broadcastMessage(text, io) {
   if (botStatus !== 'connected') throw new Error('WhatsApp não está conectado.');
   if (!text?.trim()) throw new Error('Mensagem não pode estar vazia.');
-  const groupIds = resolveOfferGroupIds();
+  // Broadcast manual alcança todos os grupos de todos os perfis ativos (não é por perfil).
+  const groupIds = [...new Set(db.getActivePostProfiles().flatMap(p => resolveProfileGroupIds(p)))];
   if (!groupIds.length) throw new Error('Nenhum grupo configurado.');
   const { sent, failed } = await sendToGroups(groupIds, text.trim(), null);
   if (!sent.length) throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);

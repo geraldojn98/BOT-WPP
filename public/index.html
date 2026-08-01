@@ -285,6 +285,7 @@
 <nav>
   <button class="nav-btn active" onclick="showPage('dashboard', this)">🏠 Início</button>
   <button class="nav-btn" onclick="showPage('groups', this)">📱 Grupos</button>
+  <button class="nav-btn" onclick="showPage('postprofiles', this)">🗂️ Perfis de Postagem</button>
   <button class="nav-btn" onclick="showPage('autoreply', this)">🗨️ Respostas</button>
   <button class="nav-btn" onclick="showPage('campaigns', this)">📢 Campanhas</button>
   <button class="nav-btn" onclick="showPage('webhooks', this)">🔗 Integrações</button>
@@ -326,12 +327,12 @@
     <div class="card" style="border: 2px solid var(--primary);">
       <div class="card-title"><span class="icon">🚀</span> Postar agora</div>
       <p style="font-size:0.9rem; color:var(--muted); margin-bottom:16px;">
-        O bot vai buscar um produto em promoção no Mercado Livre agora mesmo e enviar para os grupos selecionados.
+        Cada perfil de postagem busca e posta ofertas nos seus próprios grupos. Vá na aba
+        <strong>🗂️ Perfis de Postagem</strong> e clique em 🛒 no perfil que quiser disparar agora.
       </p>
-      <button class="btn btn-primary btn-lg" id="btn-auto-post" onclick="autoPost()">
-        🛒 Buscar produto e postar agora
+      <button class="btn btn-primary btn-lg" onclick="showPage('postprofiles', document.querySelector('.nav-btn[onclick*=postprofiles]'))">
+        🗂️ Ir para Perfis de Postagem
       </button>
-      <div id="auto-post-result" style="margin-top:14px; display:none;"></div>
     </div>
 
     <div class="card">
@@ -407,20 +408,16 @@
   <div class="page" id="page-groups">
     <div class="hint hint-blue">
       <strong>📱 Como funciona?</strong><br>
-      Selecione os grupos do WhatsApp para o bot enviar as postagens automaticamente. O bot vai enviar para todos os grupos selecionados ao mesmo tempo.
+      Aqui você vê e organiza seus grupos do WhatsApp. Pra escolher quais grupos recebem os posts automáticos de oferta, vá em <strong>🗂️ Perfis de Postagem</strong> — cada perfil tem sua própria seleção de grupos, horários e filtros.
     </div>
 
     <div class="card">
       <div class="card-title"><span class="icon">📋</span> Seus grupos do WhatsApp</div>
       <div class="hint hint-blue">
-        Marque quais grupos devem receber os posts de oferta. Se a listagem ao vivo do WhatsApp não estiver disponível (ex: acabou de conectar), o painel usa automaticamente um diretório próprio construído a partir da atividade dos grupos, com apelido editável.
+        Se a listagem ao vivo do WhatsApp não estiver disponível (ex: acabou de conectar), o painel usa automaticamente um diretório próprio construído a partir da atividade dos grupos, com apelido editável. O rótulo 🗂️ em cada grupo mostra quais perfis de postagem já incluem ele.
       </div>
       <div style="display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;">
-        <button class="btn btn-green btn-lg" style="flex:1;" onclick="saveGroups()">💾 Salvar grupos selecionados</button>
         <button class="btn btn-blue" onclick="tryAutoRefreshGroups()">🔄 Tentar listar automaticamente</button>
-      </div>
-      <div style="margin-bottom:12px;">
-        <span id="groups-counter" style="font-size:0.88rem; color:var(--muted);">Nenhum grupo selecionado</span>
       </div>
       <input type="text" id="group-search" placeholder="🔎 Buscar grupo pelo nome..." style="margin-bottom:10px;" oninput="renderGroups()" />
       <div id="group-open-filter" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
@@ -566,6 +563,18 @@
     </div>
   </div>
 
+  <!-- ===== PERFIS DE POSTAGEM ===== -->
+  <div class="page" id="page-postprofiles">
+    <div class="hint hint-blue">
+      <strong>🗂️ Como funciona?</strong><br>
+      Cada perfil tem seus próprios grupos, horários, filtros de produto (desconto/palavras-chave/preço) e — opcionalmente — seu próprio tom de texto gerado por IA. Assim você pode ter, por exemplo, um perfil "Eletrônicos" postando às 9h/18h em dois grupos, e um perfil "Casa" postando às 12h/20h em outros dois grupos, cada um de um jeito.
+    </div>
+    <button class="btn btn-primary btn-sm" onclick="openNewPostProfile()" style="margin-bottom:14px;">＋ Novo perfil de postagem</button>
+    <div id="postprofiles-list">
+      <div class="empty-state" style="padding:24px;"><div class="empty-icon">🗂️</div><p>Nenhum perfil criado ainda.</p></div>
+    </div>
+  </div>
+
   <!-- ===== RESPOSTAS AUTOMÁTICAS ===== -->
   <div class="page" id="page-autoreply">
     <div class="hint hint-blue">
@@ -645,7 +654,13 @@
   <div class="page" id="page-products">
     <div class="hint hint-green">
       <strong>🛒 Como funciona?</strong><br>
-      Você pode deixar o bot buscar produtos automaticamente no Mercado Livre (configure os filtros em <strong>⚙️ Configurações</strong>), ou cadastrar produtos específicos aqui para o bot divulgar.
+      Você pode deixar o bot buscar produtos automaticamente no Mercado Livre (configure os filtros e horários em <strong>🗂️ Perfis de Postagem</strong>), ou cadastrar produtos específicos aqui para o bot divulgar.
+    </div>
+
+    <div class="form-group" style="max-width:360px;">
+      <div class="form-label">🗂️ Perfil usado pelo botão "Postar agora"</div>
+      <div class="form-desc">Define pra quais grupos e com qual tom os produtos abaixo são enviados manualmente.</div>
+      <select id="products-profile-select"></select>
     </div>
 
     <div style="display:flex; gap:10px; margin-bottom:20px; flex-wrap:wrap; align-items:center;">
@@ -695,56 +710,17 @@
   <div class="page" id="page-settings">
     <form id="settings-form" onsubmit="saveSettings(event)">
 
-      <!-- AGENDAMENTO -->
+      <!-- ROBÔ -->
       <div class="card">
-        <div class="card-title"><span class="icon">🕐</span> Horários de postagem</div>
-        <div class="hint">
-          <strong>Quando o bot vai postar?</strong><br>
-          Escolha os dias da semana e os horários. O bot vai enviar automaticamente nos momentos que você configurar.
+        <div class="card-title"><span class="icon">🕐</span> Robô</div>
+        <div class="hint hint-blue">
+          Grupos, horários de postagem, filtros de produto (desconto/palavras-chave/preço) e limite diário agora são configurados por perfil, na aba <strong>🗂️ Perfis de Postagem</strong>. Aqui ficam só os ajustes que valem pra todos os perfis.
         </div>
 
-        <!-- DIAS DA SEMANA -->
-        <div class="form-group">
-          <div class="form-label">📅 Dias da semana</div>
-          <div class="form-desc">Clique nos dias em que deseja que o bot poste. Todos marcados = todos os dias.</div>
-          <div class="day-buttons" id="day-buttons">
-            <button type="button" class="day-btn active" data-day="0">Dom</button>
-            <button type="button" class="day-btn active" data-day="1">Seg</button>
-            <button type="button" class="day-btn active" data-day="2">Ter</button>
-            <button type="button" class="day-btn active" data-day="3">Qua</button>
-            <button type="button" class="day-btn active" data-day="4">Qui</button>
-            <button type="button" class="day-btn active" data-day="5">Sex</button>
-            <button type="button" class="day-btn active" data-day="6">Sáb</button>
-          </div>
-          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('all')">✅ Todos os dias</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('weekdays')">💼 Só dias úteis</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="selectDays('weekend')">🎉 Só fim de semana</button>
-          </div>
-        </div>
-
-        <!-- HORÁRIOS -->
-        <div class="form-group">
-          <div class="form-label">⏰ Horários de envio</div>
-          <div class="form-desc">Adicione os horários em que o bot deve postar. Clique no ✕ para remover.</div>
-          <div class="times-list" id="times-list"></div>
-          <div class="add-time-row">
-            <input type="time" id="new-time-input" value="09:00" />
-            <button type="button" class="btn btn-primary btn-sm" onclick="addTime()">＋ Adicionar horário</button>
-          </div>
-          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-            <span style="font-size:0.8rem;color:var(--muted);align-self:center;">Sugestões:</span>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('09:00,12:00,18:00')">☀️ 9h, 12h e 18h</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('08:00,20:00')">🌅 Manhã e noite</button>
-            <button type="button" class="btn btn-ghost btn-sm" onclick="setPreset('09:00,13:00,17:00,21:00')">🔄 4x por dia</button>
-          </div>
-        </div>
-
-        <!-- FUSO HORÁRIO -->
         <div class="form-group">
           <div class="form-label">🌎 Fuso horário do robô</div>
           <div class="form-desc">
-            Os horários acima são interpretados nesse fuso. Se o bot estiver rodando na nuvem
+            Os horários configurados em cada perfil são interpretados nesse fuso. Se o bot estiver rodando na nuvem
             (o servidor usa UTC por padrão), os posts podem sair na hora errada até você configurar isso certinho.
           </div>
           <select name="bot_timezone" id="bot-timezone-select">
@@ -756,67 +732,13 @@
           </select>
         </div>
 
-        <!-- PREVIEW DO CRON -->
-        <div class="cron-preview" id="cron-preview">
-          <span>⚙️ Agendamento configurado:</span> <strong id="cron-preview-text">—</strong>
-        </div>
-        <input type="hidden" name="post_times" id="post-times-hidden" />
-        <input type="hidden" name="post_days"  id="post-days-hidden" />
-
-        <div class="form-group" style="margin-top:18px;">
-          <div class="form-label">Máximo de posts por dia <span class="badge-opt">Opcional</span></div>
-          <div class="form-desc">Limite diário de postagens. Deixe em branco para sem limite.</div>
-          <input type="number" name="max_posts_per_day" min="1" placeholder="Ex: 6" id="max-posts-input" oninput="checkMaxPosts(this.value)" />
-          <div id="max-posts-warning" style="display:none;" class="hint hint-red" style="margin-top:6px; font-size:0.82rem;">
-            ⚠️ Mais de 8 posts por dia pode parecer spam para os membros do grupo e aumentar o risco de banimento.
-          </div>
-          <div class="form-example">📌 Recomendado: entre 3 e 8 posts por dia.</div>
-        </div>
-
         <div class="form-group">
           <div class="form-label">Bot ativo?</div>
-          <div class="form-desc">Você pode pausar o bot sem precisar fechar o programa.</div>
+          <div class="form-desc">Você pode pausar o bot inteiro (todos os perfis) sem precisar fechar o programa.</div>
           <select name="bot_active">
             <option value="1">✅ Sim — Bot funcionando normalmente</option>
             <option value="0">⏸️ Não — Bot pausado (não envia nada)</option>
           </select>
-        </div>
-      </div>
-
-      <!-- FILTROS DE BUSCA -->
-      <div class="card">
-        <div class="card-title"><span class="icon">🔍</span> O que o bot deve buscar?</div>
-        <div class="hint">
-          <strong>O bot pesquisa promoções no Mercado Livre automaticamente.</strong><br>
-          Configure aqui quais tipos de produto ele deve procurar e em qual faixa de preço.
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Palavras-chave <span class="badge-opt">Opcional</span></div>
-          <div class="form-desc">Escreva o que você quer que o bot procure. Separe com vírgula para o bot alternar entre elas.</div>
-          <input type="text" name="search_keywords" placeholder="Ex: fone bluetooth, tênis, fritadeira air fryer, notebook" />
-          <div class="form-example">📌 Dica: quanto mais específico, melhor! Ex: "tênis masculino nike" ao invés de só "tênis".<br>
-          Se deixar vazio, o bot vai buscar qualquer produto em promoção.</div>
-        </div>
-
-        <div class="input-row">
-          <div class="form-group">
-            <div class="form-label">Preço mínimo (R$) <span class="badge-opt">Opcional</span></div>
-            <div class="form-desc">Não vai postar produtos mais baratos que isso.</div>
-            <input type="number" name="price_min" min="0" step="1" placeholder="Ex: 50" />
-          </div>
-          <div class="form-group">
-            <div class="form-label">Preço máximo (R$) <span class="badge-opt">Opcional</span></div>
-            <div class="form-desc">Não vai postar produtos mais caros que isso.</div>
-            <input type="number" name="price_max" min="0" step="1" placeholder="Ex: 500" />
-          </div>
-        </div>
-
-        <div class="form-group">
-          <div class="form-label">Desconto mínimo (%) <span class="badge">Obrigatório</span></div>
-          <div class="form-desc">O bot só vai postar produtos que tiverem pelo menos esse desconto.</div>
-          <input type="number" name="min_discount" min="1" max="99" placeholder="Ex: 20" />
-          <div class="form-example">📌 Recomendado: 20% ou mais. Produtos com desconto alto vendem melhor!</div>
         </div>
       </div>
 
@@ -825,7 +747,7 @@
         <div class="card-title"><span class="icon">✍️</span> Como o bot escreve as mensagens?</div>
         <div class="hint">
           <strong>O bot usa inteligência artificial (Claude) para criar textos diferentes a cada post.</strong><br>
-          Aqui você pode personalizar como esses textos devem ser escritos.
+          Este é o tom <strong>padrão</strong>, usado por qualquer perfil de postagem que não definir o seu próprio (em 🗂️ Perfis de Postagem).
         </div>
 
         <div class="form-group">
@@ -878,6 +800,9 @@
   </button>
   <button id="mnav-groups" onclick="showPage('groups', this); setMobileNav('groups')">
     <span class="nav-icon">📱</span>Grupos
+  </button>
+  <button id="mnav-postprofiles" onclick="showPage('postprofiles', this); setMobileNav('postprofiles')">
+    <span class="nav-icon">🗂️</span>Perfis
   </button>
   <button id="mnav-autoreply" onclick="showPage('autoreply', this); setMobileNav('autoreply')">
     <span class="nav-icon">🗨️</span>Respostas
@@ -1163,6 +1088,106 @@
       <div class="modal-actions">
         <button type="submit" class="btn btn-primary">💾 Salvar mensagem</button>
         <button type="button" class="btn btn-ghost" onclick="closeModal('modal-scheduled-msg')">Cancelar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Criar/Editar perfil de postagem -->
+<div class="modal-overlay" id="modal-postprofile">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title" id="postprofile-modal-title">🗂️ Novo perfil de postagem</div>
+    <form id="postprofile-form" onsubmit="savePostProfile(event)">
+      <input type="hidden" id="pp-id" />
+      <div class="form-group">
+        <div class="form-label">Nome do perfil <span class="badge">Obrigatório</span></div>
+        <div class="form-desc">Ex: "Eletrônicos", "Casa e Decoração", "Grupo VIP"...</div>
+        <input type="text" id="pp-name" required placeholder="Ex: Eletrônicos" />
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">📱 Grupos deste perfil</div>
+        <div class="form-desc">Selecione os grupos que devem receber os posts gerados por este perfil.</div>
+        <div id="pp-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">🚀 Séries de auto-escala vinculadas <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Se marcar uma série, todos os grupos dela (atuais e futuros) também recebem os posts deste perfil.</div>
+        <div id="pp-series-selector" style="display:flex;flex-direction:column;gap:6px;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">📅 Dias da semana</div>
+        <div class="day-buttons" id="pp-day-buttons">
+          <button type="button" class="day-btn active" data-ppday="0">Dom</button>
+          <button type="button" class="day-btn active" data-ppday="1">Seg</button>
+          <button type="button" class="day-btn active" data-ppday="2">Ter</button>
+          <button type="button" class="day-btn active" data-ppday="3">Qua</button>
+          <button type="button" class="day-btn active" data-ppday="4">Qui</button>
+          <button type="button" class="day-btn active" data-ppday="5">Sex</button>
+          <button type="button" class="day-btn active" data-ppday="6">Sáb</button>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('all')">✅ Todos os dias</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekdays')">💼 Só dias úteis</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekend')">🎉 Só fim de semana</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">⏰ Horários de envio</div>
+        <div class="form-desc">Adicione os horários em que este perfil deve postar. Clique no ✕ para remover.</div>
+        <div class="times-list" id="pp-times-list"></div>
+        <div class="add-time-row">
+          <input type="time" id="new-pp-time-input" value="09:00" />
+          <button type="button" class="btn btn-primary btn-sm" onclick="addPpTime()">＋ Adicionar horário</button>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <span style="font-size:0.8rem;color:var(--muted);align-self:center;">Sugestões:</span>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpTimePreset('09:00,12:00,18:00')">☀️ 9h, 12h e 18h</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpTimePreset('08:00,20:00')">🌅 Manhã e noite</button>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpTimePreset('09:00,13:00,17:00,21:00')">🔄 4x por dia</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Palavras-chave <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Separe com vírgula. Deixe vazio pra buscar qualquer produto em promoção.</div>
+        <input type="text" id="pp-keywords" placeholder="Ex: fone bluetooth, tênis, notebook" />
+      </div>
+
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">Preço mínimo (R$) <span class="badge-opt">Opcional</span></div>
+          <input type="number" id="pp-price-min" min="0" step="1" placeholder="Ex: 50" />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Preço máximo (R$) <span class="badge-opt">Opcional</span></div>
+          <input type="number" id="pp-price-max" min="0" step="1" placeholder="Ex: 500" />
+        </div>
+      </div>
+
+      <div class="input-row">
+        <div class="form-group">
+          <div class="form-label">Desconto mínimo (%) <span class="badge">Obrigatório</span></div>
+          <input type="number" id="pp-min-discount" min="1" max="99" value="20" required />
+        </div>
+        <div class="form-group">
+          <div class="form-label">Máximo de posts por dia</div>
+          <input type="number" id="pp-max-posts" min="1" value="6" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">Tom de voz da IA para este perfil <span class="badge-opt">Opcional</span></div>
+        <div class="form-desc">Deixe em branco para usar o prompt padrão configurado em ⚙️ Configurações.</div>
+        <textarea id="pp-prompt" rows="3" placeholder="Ex: Escreva em tom premium e elegante, sem gírias, focado em qualidade."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button type="submit" class="btn btn-primary">💾 Salvar perfil</button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal('modal-postprofile')">Cancelar</button>
       </div>
     </form>
   </div>
@@ -1477,7 +1502,6 @@
 
 <script>
 // ===== ESTADO GLOBAL =====
-let selectedGroups = [];
 let allGroups = [];
 let groupOpenFilter = 'all';
 
@@ -1493,12 +1517,13 @@ function showPage(name, btn) {
   document.getElementById('page-' + name).classList.add('active');
   if (btn) btn.classList.add('active');
   setMobileNav(name);
-  if (name === 'products') loadProducts();
+  if (name === 'products') { loadProducts(); loadProductsProfileSelect(); }
   if (name === 'history') loadHistory();
   if (name === 'logs') loadLogs();
   if (name === 'settings') loadSettings();
   if (name === 'dashboard') loadDashboard();
   if (name === 'groups') loadGroups();
+  if (name === 'postprofiles') loadPostProfiles();
   if (name === 'autoreply') loadAutoReplyRules();
   if (name === 'campaigns') loadCampaigns();
   if (name === 'webhooks') loadWebhooksPage();
@@ -1620,19 +1645,19 @@ checkStatus();
 
 // ===== DASHBOARD =====
 async function loadDashboard() {
-  const [history, products, settings] = await Promise.all([
+  const [history, products, profiles] = await Promise.all([
     fetch('/api/history?limit=200').then(r => r.json()).catch(() => []),
     fetch('/api/products').then(r => r.json()).catch(() => []),
-    fetch('/api/settings').then(r => r.json()).catch(() => ({})),
+    fetch('/api/post-profiles').then(r => r.json()).catch(() => []),
   ]);
   const today = new Date().toISOString().slice(0, 10);
   const todayPosts = history.filter(h => h.sent_at?.slice(0, 10) === today).length;
   const activeProducts = products.filter(p => p.active).length;
-  const groupIds = (settings.whatsapp_group_ids || '').split(',').filter(Boolean);
+  const groupIds = new Set(profiles.filter(p => p.active).flatMap(p => (p.group_ids || '').split(',').filter(Boolean)));
 
   document.getElementById('stat-today').textContent = todayPosts;
   document.getElementById('stat-products').textContent = activeProducts;
-  document.getElementById('stat-groups').textContent = groupIds.length;
+  document.getElementById('stat-groups').textContent = groupIds.size;
   document.getElementById('stat-total').textContent = history.length;
 
   const recentEl = document.getElementById('dashboard-recent');
@@ -1659,11 +1684,21 @@ async function loadDashboard() {
 // ===== GRUPOS =====
 let knownGroups = [];
 let liveGroupsMode = false;
+let groupProfileBadges = {}; // groupId -> [nomes de perfis que incluem esse grupo]
+
+async function loadGroupProfileBadges() {
+  const profiles = await fetch('/api/post-profiles').then(r => r.json()).catch(() => []);
+  const map = {};
+  for (const p of profiles) {
+    for (const gid of (p.group_ids || '').split(',').filter(Boolean)) {
+      (map[gid] = map[gid] || []).push(p.name);
+    }
+  }
+  groupProfileBadges = map;
+}
 
 async function loadGroups() {
-  let settings = {};
-  try { settings = await fetch('/api/settings').then(r => r.json()); } catch (_) {}
-  selectedGroups = (settings.whatsapp_group_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  await loadGroupProfileBadges();
 
   // Tenta a listagem ao vivo primeiro (nomes reais, admin/dono) — cai pro diretório próprio se falhar.
   try {
@@ -1683,9 +1718,9 @@ async function loadGroups() {
     liveGroupsMode = false;
     knownGroups = await fetch('/api/known-groups').then(r => r.json()).catch(() => []);
     allGroups = knownGroups.map(g => ({ id: g.group_id, name: g.nickname || g.group_id }));
-    // Garante que grupos já salvos em Configurações apareçam aqui mesmo que o diretório
-    // ainda não os tenha "visto" (ex: foram salvos manualmente antes dessa página existir).
-    for (const id of selectedGroups) {
+    // Garante que grupos já usados em algum perfil apareçam aqui mesmo que o diretório
+    // ainda não os tenha "visto".
+    for (const id of Object.keys(groupProfileBadges)) {
       if (!allGroups.some(g => g.id === id)) allGroups.push({ id, name: id });
     }
   }
@@ -1798,7 +1833,6 @@ async function editGroupNickname(groupId) {
 
 function renderGroups() {
   const listEl = document.getElementById('group-list');
-  const counter = document.getElementById('groups-counter');
   const filterBar = document.getElementById('group-open-filter');
 
   filterBar.style.display = liveGroupsMode ? 'flex' : 'none';
@@ -1810,12 +1844,8 @@ function renderGroups() {
     listEl.innerHTML = liveGroupsMode
       ? '<div class="empty-state"><div class="empty-icon">💬</div><p>Nenhum grupo encontrado. Você precisa fazer parte de pelo menos um grupo no WhatsApp.</p></div>'
       : '<div class="empty-state"><div class="empty-icon">💬</div><p>Nenhum grupo no diretório ainda.<br>Mande uma mensagem em um grupo pelo celular, ou adicione pelo ID abaixo.</p></div>';
-    counter.textContent = 'Nenhum grupo selecionado';
     return;
   }
-
-  counter.textContent = `${selectedGroups.length} grupo(s) selecionado(s) para receber ofertas`;
-  counter.style.color = 'var(--muted)';
 
   const searchTerm = (document.getElementById('group-search').value || '').trim().toLowerCase();
   let filtered = allGroups;
@@ -1840,16 +1870,19 @@ function renderLiveGroups(listEl, groups) {
   const admins = groups.filter(g => g.isAdmin);
   const members = groups.filter(g => !g.isAdmin);
 
+  function profileBadges(g) {
+    const names = groupProfileBadges[g.id];
+    if (!names?.length) return ' <span class="tag" style="background:#eee;color:#888;">🗂️ nenhum perfil</span>';
+    return names.map(n => ` <span class="tag" style="background:#ede7f6;color:#5e35b1;">🗂️ ${n}</span>`).join('');
+  }
+
   function renderItem(g) {
-    const isSel = selectedGroups.includes(g.id);
     return `
-      <div class="group-item ${isSel ? 'selected' : ''}" onclick="toggleGroup('${g.id}')">
-        <div class="group-check">${isSel ? '✓' : ''}</div>
+      <div class="group-item">
         <div class="group-info">
-          <div class="group-name">${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOwner ? ' <span class="tag" style="background:#fff3e0;color:var(--orange);">🔑 Criado por você</span>' : ''}${g.isOpen === false ? ' <span class="tag" style="background:#fdecea;color:var(--red);">🔒 Fechado</span>' : ' <span class="tag" style="background:#e8f8ef;color:var(--green);">🔓 Aberto</span>'}</div>
+          <div class="group-name">${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOwner ? ' <span class="tag" style="background:#fff3e0;color:var(--orange);">🔑 Criado por você</span>' : ''}${g.isOpen === false ? ' <span class="tag" style="background:#fdecea;color:var(--red);">🔒 Fechado</span>' : ' <span class="tag" style="background:#e8f8ef;color:var(--green);">🔓 Aberto</span>'}${profileBadges(g)}</div>
           <div class="group-meta">${g.participants} participantes</div>
         </div>
-        ${isSel ? '<span class="group-count">✓ Selecionado</span>' : ''}
       </div>
     `;
   }
@@ -1877,41 +1910,24 @@ function renderLiveGroups(listEl, groups) {
 
 function renderKnownGroups(listEl, groups) {
   listEl.innerHTML = groups.map(g => {
-    const isSel = selectedGroups.includes(g.id);
     const known = knownGroups.find(k => k.group_id === g.id);
     const sourceLabel = { message: '💬 visto por mensagem', group_join: '🎉 visto na entrada de alguém', group_leave: '👋 visto na saída de alguém', manual: '⌨️ adicionado manualmente' }[known?.source] || '';
     const meta = known ? `${sourceLabel} · ${known.message_count} msg · última atividade ${fmt(known.last_seen_at)}` : '';
+    const names = groupProfileBadges[g.id];
+    const badges = names?.length
+      ? names.map(n => ` <span class="tag" style="background:#ede7f6;color:#5e35b1;">🗂️ ${n}</span>`).join('')
+      : ' <span class="tag" style="background:#eee;color:#888;">🗂️ nenhum perfil</span>';
     return `
-      <div class="group-item ${isSel ? 'selected' : ''}" onclick="toggleGroup('${g.id}')">
-        <div class="group-check">${isSel ? '✓' : ''}</div>
+      <div class="group-item">
         <div class="group-info">
-          <div class="group-name">💬 ${known?.nickname ? known.nickname : '<span style="color:var(--muted);font-weight:400;">(sem apelido)</span>'}</div>
+          <div class="group-name">💬 ${known?.nickname ? known.nickname : '<span style="color:var(--muted);font-weight:400;">(sem apelido)</span>'}${badges}</div>
           <div class="group-meta" style="font-family:monospace;">${g.id}</div>
           <div class="group-meta">${meta}</div>
         </div>
-        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation(); editGroupNickname('${g.id}')">✏️</button>
+        <button class="btn btn-ghost btn-sm" onclick="editGroupNickname('${g.id}')">✏️</button>
       </div>
     `;
   }).join('');
-}
-
-function toggleGroup(id) {
-  if (selectedGroups.includes(id)) {
-    selectedGroups = selectedGroups.filter(g => g !== id);
-  } else {
-    selectedGroups.push(id);
-  }
-  renderGroups();
-}
-
-async function saveGroups() {
-  await fetch('/api/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ whatsapp_group_ids: selectedGroups.join(',') }),
-  });
-  toast(`✅ ${selectedGroups.length} grupo(s) salvos!`);
-  loadDashboard();
 }
 
 // ===== PRODUTOS =====
@@ -1946,47 +1962,27 @@ async function loadProducts() {
   `).join('');
 }
 
-async function autoPost() {
-  const btn = document.getElementById('btn-auto-post');
-  const result = document.getElementById('auto-post-result');
-  btn.disabled = true;
-  btn.textContent = '⏳ Buscando produto no ML...';
-  result.style.display = 'none';
-
-  try {
-    const res = await fetch('/api/post/auto', { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      result.style.display = 'block';
-      result.innerHTML = `
-        <div class="hint ${data.warning ? 'hint-red' : 'hint-green'}">
-          <strong>${data.warning ? '⚠️ Postado com problema' : '✅ Postado com sucesso!'}</strong><br>
-          <strong>Produto:</strong> ${data.product}<br>
-          ${data.discount ? `<strong>Desconto:</strong> ${data.discount}%<br>` : ''}
-          ${data.warning ? `<strong>${data.warning}</strong><br>` : ''}
-          <strong>Enviado para ${data.groupsSent ?? '?'} grupo(s)${data.groupsFailed ? `, falhou em ${data.groupsFailed}` : ''}.</strong><br>
-          ${data.usedFallback ? `<div style="margin-top:6px;font-size:0.85rem;">🔁 O Mercado Livre não respondeu agora — foi usado um produto já cadastrado como alternativa.</div>` : ''}
-          <details style="margin-top:8px;"><summary style="cursor:pointer;font-size:0.82rem;">Ver mensagem enviada</summary>
-          <pre style="white-space:pre-wrap;font-size:0.8rem;margin-top:6px;">${data.text}</pre></details>
-        </div>`;
-      loadDashboard();
-    } else {
-      result.style.display = 'block';
-      result.innerHTML = `<div class="hint hint-red">❌ ${data.error}</div>`;
-    }
-  } catch (err) {
-    result.style.display = 'block';
-    result.innerHTML = `<div class="hint hint-red">❌ Erro de conexão.</div>`;
+async function loadProductsProfileSelect() {
+  const sel = document.getElementById('products-profile-select');
+  if (!sel) return;
+  const current = sel.value;
+  const profiles = await fetch('/api/post-profiles').then(r => r.json()).catch(() => []);
+  if (!profiles.length) {
+    sel.innerHTML = '<option value="">Nenhum perfil criado — vá em 🗂️ Perfis de Postagem</option>';
+    return;
   }
-
-  btn.disabled = false;
-  btn.textContent = '🛒 Buscar produto e postar agora';
+  sel.innerHTML = profiles.map(p => `<option value="${p.id}">${p.active ? '🟢' : '⏸️'} ${p.name}</option>`).join('');
+  if (current && profiles.some(p => String(p.id) === current)) sel.value = current;
 }
 
 async function manualPost(id) {
-  if (!confirm('Enviar esse produto agora para os grupos selecionados?')) return;
+  const profileId = document.getElementById('products-profile-select')?.value;
+  if (!profileId) return toast('Crie um perfil de postagem antes (aba 🗂️ Perfis de Postagem).', 'err');
+  if (!confirm('Enviar esse produto agora usando esse perfil?')) return;
   toast('Enviando...');
-  const res = await fetch(`/api/post/${id}`, { method: 'POST' });
+  const res = await fetch(`/api/post/${id}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profileId }),
+  });
   const data = await res.json();
   if (data.ok) toast('✅ Post enviado com sucesso!');
   else toast('❌ ' + data.error, 'err');
@@ -2137,113 +2133,11 @@ async function clearLogs() {
   else toast('❌ ' + (data.error || 'Erro'), 'err');
 }
 
-// ===== SCHEDULER =====
-let schedulerTimes = [];
-
-function updateCron() {
-  const activeDays = Array.from(document.querySelectorAll('#day-buttons .day-btn.active')).map(b => b.dataset.day);
-  const times = schedulerTimes.slice().sort((a, b) => a.localeCompare(b));
-
-  // Salva post_times e post_days (campos ocultos)
-  document.getElementById('post-times-hidden').value = times.join(',');
-  document.getElementById('post-days-hidden').value  = activeDays.length === 7 ? '*' : activeDays.join(',');
-
-  // Preview legível
-  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-  if (!times.length || !activeDays.length) {
-    document.getElementById('cron-preview-text').textContent = 'Nenhum horário configurado';
-    return;
-  }
-  const daysText = activeDays.length === 7 ? 'todos os dias' : activeDays.map(d => dayNames[d]).join(', ');
-  document.getElementById('cron-preview-text').textContent = `${daysText} às ${times.join(', ')}`;
-}
-
-function addTime() {
-  const input = document.getElementById('new-time-input');
-  const val = input.value;
-  if (!val || schedulerTimes.includes(val)) return;
-  schedulerTimes.push(val);
-  renderTimes();
-  updateCron();
-}
-
-function removeTime(t) {
-  schedulerTimes = schedulerTimes.filter(x => x !== t);
-  renderTimes();
-  updateCron();
-}
-
-function renderTimes() {
-  const list = document.getElementById('times-list');
-  if (!schedulerTimes.length) {
-    list.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhum horário adicionado ainda.</span>';
-    return;
-  }
-  const sorted = schedulerTimes.slice().sort((a,b) => a.localeCompare(b));
-  list.innerHTML = sorted.map(t => `
-    <div class="time-chip">
-      ⏰ ${t}
-      <button type="button" class="remove-time" onclick="removeTime('${t}')" title="Remover">✕</button>
-    </div>
-  `).join('');
-}
-
-function selectDays(preset) {
-  const btns = document.querySelectorAll('#day-buttons .day-btn');
-  btns.forEach(b => {
-    const d = parseInt(b.dataset.day);
-    if (preset === 'all') b.classList.add('active');
-    else if (preset === 'weekdays') b.classList.toggle('active', d >= 1 && d <= 5);
-    else if (preset === 'weekend') b.classList.toggle('active', d === 0 || d === 6);
-  });
-  updateCron();
-}
-
-function setPreset(timesStr) {
-  schedulerTimes = timesStr.split(',');
-  renderTimes();
-  updateCron();
-}
-
-function parseSettingsToUI(settings) {
-  // Carrega post_times (HH:MM,HH:MM,...)
-  if (settings.post_times) {
-    schedulerTimes = settings.post_times.split(',').map(t => t.trim()).filter(Boolean);
-    renderTimes();
-  }
-  // Carrega post_days
-  const daysPart = settings.post_days || '*';
-  const btns = document.querySelectorAll('#day-buttons .day-btn');
-  if (daysPart === '*') {
-    btns.forEach(b => b.classList.add('active'));
-  } else {
-    btns.forEach(b => b.classList.remove('active'));
-    daysPart.split(',').map(Number).forEach(d => {
-      const btn = document.querySelector(`#day-buttons .day-btn[data-day="${d}"]`);
-      if (btn) btn.classList.add('active');
-    });
-  }
-  updateCron();
-}
-
-// Toggle day on click (settings page only)
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('#day-buttons .day-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      btn.classList.toggle('active');
-      updateCron();
-    });
-  });
-  setPreset('09:00,12:00,18:00'); // default
-});
-
 // ===== CONFIGURAÇÕES =====
 async function loadSettings() {
   const s = await fetch('/api/settings').then(r => r.json()).catch(() => ({}));
   const form = document.getElementById('settings-form');
-  parseSettingsToUI(s);
   for (const [k, v] of Object.entries(s)) {
-    if (k === 'post_times' || k === 'post_days') continue;
     if (form.elements[k]) form.elements[k].value = v ?? '';
   }
   const hasKey = s.anthropic_api_key && s.anthropic_api_key !== 'sua_chave_aqui';
@@ -2271,11 +2165,6 @@ function fmt(str) {
 }
 
 // ===== ML AFFILIATE SESSION =====
-function checkMaxPosts(val) {
-  const w = document.getElementById('max-posts-warning');
-  if (w) w.style.display = val && parseInt(val) > 8 ? 'block' : 'none';
-}
-
 async function checkMlAffiliateStatus() {
   try {
     const r = await fetch('/api/ml-affiliate/status').then(r => r.json());
@@ -2337,6 +2226,10 @@ document.addEventListener('DOMContentLoaded', () => {
   loadScheduledMsgs();
   // Sched modal day buttons
   document.querySelectorAll('#sched-day-buttons .day-btn').forEach(btn => {
+    btn.addEventListener('click', () => btn.classList.toggle('active'));
+  });
+  // Post profile modal day buttons
+  document.querySelectorAll('#pp-day-buttons .day-btn').forEach(btn => {
     btn.addEventListener('click', () => btn.classList.toggle('active'));
   });
 });
@@ -2448,8 +2341,8 @@ async function initBroadcastGroupSelector() {
   const el = document.getElementById('broadcast-group-selector');
   if (!el) return;
   try {
-    const settings = await fetch('/api/settings').then(r => r.json()).catch(() => ({}));
-    const saved = (settings.whatsapp_group_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+    const profiles = await fetch('/api/post-profiles').then(r => r.json()).catch(() => []);
+    const saved = [...new Set(profiles.filter(p => p.active).flatMap(p => (p.group_ids || '').split(',').filter(Boolean)))];
     broadcastSelectedGroups = [...saved];
     // Try to get group names
     let groups = [];
@@ -2766,6 +2659,221 @@ async function deleteScheduledMsg(id) {
   await fetch(`/api/scheduled-messages/${id}`, { method: 'DELETE' });
   loadScheduledMsgs();
   toast('🗑️ Mensagem excluída.');
+}
+
+// ===== PERFIS DE POSTAGEM =====
+let ppTimes = [];
+let ppAllSeries = [];
+
+async function loadPostProfiles() {
+  const el = document.getElementById('postprofiles-list');
+  if (!el) return;
+  const profiles = await fetch('/api/post-profiles').then(r => r.json()).catch(() => []);
+  if (!profiles.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:24px;"><div class="empty-icon">🗂️</div><p>Nenhum perfil criado ainda.<br>Clique em "Novo perfil de postagem" para começar.</p></div>';
+    return;
+  }
+  const dayNames = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  el.innerHTML = profiles.map(p => {
+    const days = p.post_days === '*' ? 'Todos os dias' : (p.post_days || '').split(',').filter(Boolean).map(d => dayNames[parseInt(d)]).join(', ');
+    const groupCount = (p.group_ids || '').split(',').filter(Boolean).length;
+    const seriesCount = (p.series_ids || '').split(',').filter(Boolean).length;
+    const groupsLabel = [groupCount ? `${groupCount} grupo(s)` : null, seriesCount ? `${seriesCount} série(s)` : null].filter(Boolean).join(' + ') || 'nenhum grupo';
+    return `
+      <div class="sched-msg-card ${p.active ? '' : 'inactive'}">
+        <div class="sched-msg-info">
+          <div class="sched-msg-name">${p.active ? '🟢' : '⏸️'} ${p.name}</div>
+          <div class="sched-msg-meta">
+            <span>📱 ${groupsLabel}</span>
+            <span>📅 ${days}</span>
+            <span>⏰ ${p.post_times}</span>
+          </div>
+          <div style="font-size:0.82rem;color:#555;margin-top:6px;">🔍 Desconto mín. ${p.min_discount}% · até ${p.max_posts_per_day}/dia${p.search_keywords ? ' · ' + p.search_keywords.slice(0,50) : ''}</div>
+        </div>
+        <div class="sched-msg-actions">
+          <button class="btn btn-green btn-sm" onclick="postProfileNow(${p.id})" title="Postar agora">🛒</button>
+          <button class="btn btn-ghost btn-sm" onclick="editPostProfile(${p.id})">✏️</button>
+          <button class="btn btn-ghost btn-sm" onclick="togglePostProfile(${p.id}, ${p.active ? 0 : 1})">${p.active ? '⏸' : '▶'}</button>
+          <button class="btn btn-red btn-sm" onclick="deletePostProfileConfirm(${p.id})">🗑️</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadPpGroupSelector(selectedIds = []) {
+  const el = document.getElementById('pp-group-selector');
+  let groups = [];
+  try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+  if (!groups.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Conecte o WhatsApp para selecionar grupos</span>';
+    return;
+  }
+  el.innerHTML = groups.map(g => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+      <input type="checkbox" value="${g.id}" class="pp-group-cb" ${selectedIds.includes(g.id) ? 'checked' : ''} style="width:auto;cursor:pointer;" />
+      ${g.isAdmin ? '👑' : '💬'} ${g.name} <span style="color:var(--muted);font-size:0.75rem;">(${g.participants})</span>
+    </label>
+  `).join('');
+}
+
+async function loadPpSeriesSelector(selectedIds = []) {
+  const el = document.getElementById('pp-series-selector');
+  ppAllSeries = await fetch('/api/group-series').then(r => r.json()).catch(() => []);
+  if (!ppAllSeries.length) {
+    el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhuma série de auto-escala criada ainda (aba Grupos).</span>';
+    return;
+  }
+  el.innerHTML = ppAllSeries.map(s => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+      <input type="checkbox" value="${s.id}" class="pp-series-cb" ${selectedIds.includes(String(s.id)) ? 'checked' : ''} style="width:auto;cursor:pointer;" />
+      🚀 ${s.name} <span style="color:var(--muted);font-size:0.75rem;">(limite ${s.member_threshold}/grupo)</span>
+    </label>
+  `).join('');
+}
+
+function renderPpTimes() {
+  const list = document.getElementById('pp-times-list');
+  if (!ppTimes.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhum horário adicionado ainda.</span>';
+    return;
+  }
+  const sorted = ppTimes.slice().sort((a,b) => a.localeCompare(b));
+  list.innerHTML = sorted.map(t => `
+    <div class="time-chip">
+      ⏰ ${t}
+      <button type="button" class="remove-time" onclick="removePpTime('${t}')" title="Remover">✕</button>
+    </div>
+  `).join('');
+}
+
+function addPpTime() {
+  const input = document.getElementById('new-pp-time-input');
+  const val = input.value;
+  if (!val || ppTimes.includes(val)) return;
+  ppTimes.push(val);
+  renderPpTimes();
+}
+
+function removePpTime(t) {
+  ppTimes = ppTimes.filter(x => x !== t);
+  renderPpTimes();
+}
+
+function setPpTimePreset(timesStr) {
+  ppTimes = timesStr.split(',');
+  renderPpTimes();
+}
+
+function setPpDays(preset) {
+  document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => {
+    const d = parseInt(b.dataset.ppday);
+    if (preset === 'all') b.classList.add('active');
+    else if (preset === 'weekdays') b.classList.toggle('active', d >= 1 && d <= 5);
+    else if (preset === 'weekend') b.classList.toggle('active', d === 0 || d === 6);
+  });
+}
+
+async function openNewPostProfile() {
+  document.getElementById('postprofile-modal-title').textContent = '🗂️ Novo perfil de postagem';
+  document.getElementById('pp-id').value = '';
+  document.getElementById('pp-name').value = '';
+  document.getElementById('pp-keywords').value = '';
+  document.getElementById('pp-price-min').value = '';
+  document.getElementById('pp-price-max').value = '';
+  document.getElementById('pp-min-discount').value = '20';
+  document.getElementById('pp-max-posts').value = '6';
+  document.getElementById('pp-prompt').value = '';
+  document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => b.classList.add('active'));
+  setPpTimePreset('09:00,12:00,18:00');
+  await Promise.all([loadPpGroupSelector(), loadPpSeriesSelector()]);
+  openModal('modal-postprofile');
+}
+
+async function editPostProfile(id) {
+  const p = await fetch(`/api/post-profiles/${id}`).then(r => r.json());
+  document.getElementById('postprofile-modal-title').textContent = '✏️ Editar perfil de postagem';
+  document.getElementById('pp-id').value = id;
+  document.getElementById('pp-name').value = p.name || '';
+  document.getElementById('pp-keywords').value = p.search_keywords || '';
+  document.getElementById('pp-price-min').value = p.price_min || '';
+  document.getElementById('pp-price-max').value = p.price_max || '';
+  document.getElementById('pp-min-discount').value = p.min_discount || 20;
+  document.getElementById('pp-max-posts').value = p.max_posts_per_day || 6;
+  document.getElementById('pp-prompt').value = p.claude_prompt || '';
+
+  const days = p.post_days === '*' ? ['0','1','2','3','4','5','6'] : (p.post_days || '').split(',');
+  document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => {
+    b.classList.toggle('active', days.includes(b.dataset.ppday));
+  });
+  setPpTimePreset(p.post_times || '09:00,12:00,18:00');
+
+  const groupIds = (p.group_ids || '').split(',').filter(Boolean);
+  const seriesIds = (p.series_ids || '').split(',').filter(Boolean);
+  await Promise.all([loadPpGroupSelector(groupIds), loadPpSeriesSelector(seriesIds)]);
+  openModal('modal-postprofile');
+}
+
+async function savePostProfile(e) {
+  e.preventDefault();
+  const id = document.getElementById('pp-id').value;
+  const activeDays = Array.from(document.querySelectorAll('#pp-day-buttons .day-btn.active')).map(b => b.dataset.ppday);
+  const selectedGroups = Array.from(document.querySelectorAll('.pp-group-cb:checked')).map(cb => cb.value);
+  const selectedSeries = Array.from(document.querySelectorAll('.pp-series-cb:checked')).map(cb => cb.value);
+  const times = ppTimes.slice().sort((a,b) => a.localeCompare(b));
+
+  const payload = {
+    name: document.getElementById('pp-name').value.trim(),
+    group_ids: selectedGroups.join(','),
+    series_ids: selectedSeries.join(','),
+    post_times: times.join(','),
+    post_days: activeDays.length === 7 ? '*' : activeDays.join(','),
+    min_discount: document.getElementById('pp-min-discount').value,
+    search_keywords: document.getElementById('pp-keywords').value.trim(),
+    price_min: document.getElementById('pp-price-min').value,
+    price_max: document.getElementById('pp-price-max').value,
+    max_posts_per_day: document.getElementById('pp-max-posts').value,
+    claude_prompt: document.getElementById('pp-prompt').value.trim(),
+  };
+
+  if (!payload.name) return toast('Nome é obrigatório.', 'err');
+  if (!times.length) return toast('Adicione pelo menos um horário.', 'err');
+  if (!selectedGroups.length && !selectedSeries.length) return toast('Selecione ao menos um grupo ou série.', 'err');
+
+  const url = id ? `/api/post-profiles/${id}` : '/api/post-profiles';
+  const method = id ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+
+  closeModal('modal-postprofile');
+  toast(id ? '✅ Perfil atualizado!' : '✅ Perfil de postagem criado!');
+  loadPostProfiles();
+}
+
+async function togglePostProfile(id, active) {
+  await fetch(`/api/post-profiles/${id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active }) });
+  loadPostProfiles();
+  toast(active ? '▶ Perfil ativado!' : '⏸ Perfil pausado.');
+}
+
+async function deletePostProfileConfirm(id) {
+  if (!confirm('Excluir este perfil de postagem? Os grupos não recebem mais posts automáticos dele.')) return;
+  await fetch(`/api/post-profiles/${id}`, { method: 'DELETE' });
+  loadPostProfiles();
+  toast('🗑️ Perfil excluído.');
+}
+
+async function postProfileNow(id) {
+  toast('🔎 Buscando produto para este perfil...');
+  try {
+    const res = await fetch(`/api/post-profiles/${id}/post-now`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) return toast('❌ ' + data.error, 'err');
+    toast(`✅ Postado "${data.product}" em ${data.groupsSent} grupo(s)!${data.usedFallback ? ' (produto de fallback)' : ''}`);
+  } catch (err) {
+    toast('❌ Erro ao postar: ' + err.message, 'err');
+  }
 }
 
 // ===== CONFIGURAÇÕES POR GRUPO (boas-vindas / despedida / moderação) =====

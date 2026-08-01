@@ -56,6 +56,24 @@ function initSchema() {
       message TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS post_profiles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      group_ids TEXT DEFAULT '',
+      series_ids TEXT DEFAULT '',
+      post_times TEXT DEFAULT '09:00,12:00,18:00',
+      post_days TEXT DEFAULT '*',
+      min_discount INTEGER DEFAULT 20,
+      search_keywords TEXT DEFAULT '',
+      price_min TEXT DEFAULT '',
+      price_max TEXT DEFAULT '',
+      max_posts_per_day INTEGER DEFAULT 6,
+      claude_prompt TEXT DEFAULT '',
+      active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
 
   const defaults = [
@@ -83,6 +101,36 @@ initSchema();
 try {
   db.exec('ALTER TABLE post_history ADD COLUMN ml_id TEXT');
 } catch (_) { /* coluna já existe */ }
+
+// Migração segura: adiciona profile_id ao histórico se não existir (rastreio de posts por perfil)
+try {
+  db.exec('ALTER TABLE post_history ADD COLUMN profile_id INTEGER');
+} catch (_) { /* coluna já existe */ }
+
+// Migração única: se ainda não existe nenhum perfil de postagem, cria um "Perfil padrão"
+// a partir das configurações globais atuais — preserva o comportamento de quem já usava
+// o bot antes dos perfis existirem (mesmo agendamento, mesmos grupos, mesmos filtros).
+try {
+  const hasProfiles = db.prepare('SELECT COUNT(*) as c FROM post_profiles').get().c > 0;
+  if (!hasProfiles) {
+    const getLegacy = (key, fallback = '') => db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value ?? fallback;
+    const legacyGroupIds = getLegacy('whatsapp_group_ids') || getLegacy('whatsapp_group_id');
+    db.prepare(`
+      INSERT INTO post_profiles (name, group_ids, post_times, post_days, min_discount, search_keywords, price_min, price_max, max_posts_per_day)
+      VALUES (@name, @group_ids, @post_times, @post_days, @min_discount, @search_keywords, @price_min, @price_max, @max_posts_per_day)
+    `).run({
+      name: 'Perfil padrão',
+      group_ids: legacyGroupIds,
+      post_times: getLegacy('post_times', '09:00,12:00,18:00'),
+      post_days: getLegacy('post_days', '*'),
+      min_discount: parseInt(getLegacy('min_discount', '20')) || 20,
+      search_keywords: getLegacy('search_keywords'),
+      price_min: getLegacy('price_min'),
+      price_max: getLegacy('price_max'),
+      max_posts_per_day: parseInt(getLegacy('max_posts_per_day', '6')) || 6,
+    });
+  }
+} catch (_) { /* já migrado ou erro não-crítico */ }
 
 // ===== PRODUTOS =====
 function getAllProducts() {
@@ -135,8 +183,8 @@ function toggleProduct(id, active) {
 }
 
 // ===== HISTÓRICO =====
-function addPostHistory(productId, messageText, status = 'sent', mlId = null) {
-  return db.prepare('INSERT INTO post_history (product_id, ml_id, message_text, status) VALUES (?, ?, ?, ?)').run(productId, mlId, messageText, status);
+function addPostHistory(productId, messageText, status = 'sent', mlId = null, profileId = null) {
+  return db.prepare('INSERT INTO post_history (product_id, ml_id, message_text, status, profile_id) VALUES (?, ?, ?, ?, ?)').run(productId, mlId, messageText, status, profileId);
 }
 function getPostHistory(limit = 50) {
   return db.prepare(`
@@ -162,6 +210,70 @@ function clearLogs() {
 
 function getPostsToday() {
   return db.prepare("SELECT COUNT(*) as count FROM post_history WHERE date(sent_at) = date('now')").get();
+}
+function getPostsTodayForProfile(profileId) {
+  return db.prepare("SELECT COUNT(*) as count FROM post_history WHERE profile_id = ? AND date(sent_at) = date('now')").get(profileId);
+}
+
+// ===== PERFIS DE POSTAGEM =====
+function getAllPostProfiles() {
+  return db.prepare('SELECT * FROM post_profiles ORDER BY created_at ASC').all();
+}
+function getActivePostProfiles() {
+  return db.prepare('SELECT * FROM post_profiles WHERE active = 1 ORDER BY created_at ASC').all();
+}
+function getPostProfileById(id) {
+  return db.prepare('SELECT * FROM post_profiles WHERE id = ?').get(id);
+}
+function addPostProfile(profile) {
+  return db.prepare(`
+    INSERT INTO post_profiles (name, group_ids, series_ids, post_times, post_days, min_discount, search_keywords, price_min, price_max, max_posts_per_day, claude_prompt, active)
+    VALUES (@name, @group_ids, @series_ids, @post_times, @post_days, @min_discount, @search_keywords, @price_min, @price_max, @max_posts_per_day, @claude_prompt, @active)
+  `).run({
+    name: profile.name,
+    group_ids: profile.group_ids || '',
+    series_ids: profile.series_ids || '',
+    post_times: profile.post_times || '09:00,12:00,18:00',
+    post_days: profile.post_days || '*',
+    min_discount: parseInt(profile.min_discount) || 20,
+    search_keywords: profile.search_keywords || '',
+    price_min: profile.price_min || '',
+    price_max: profile.price_max || '',
+    max_posts_per_day: parseInt(profile.max_posts_per_day) || 6,
+    claude_prompt: profile.claude_prompt || '',
+    active: profile.active === undefined ? 1 : (profile.active ? 1 : 0),
+  });
+}
+function updatePostProfile(id, profile) {
+  return db.prepare(`
+    UPDATE post_profiles SET
+      name = @name, group_ids = @group_ids, series_ids = @series_ids,
+      post_times = @post_times, post_days = @post_days,
+      min_discount = @min_discount, search_keywords = @search_keywords,
+      price_min = @price_min, price_max = @price_max,
+      max_posts_per_day = @max_posts_per_day, claude_prompt = @claude_prompt,
+      updated_at = datetime('now')
+    WHERE id = @id
+  `).run({
+    id,
+    name: profile.name,
+    group_ids: profile.group_ids || '',
+    series_ids: profile.series_ids || '',
+    post_times: profile.post_times || '09:00,12:00,18:00',
+    post_days: profile.post_days || '*',
+    min_discount: parseInt(profile.min_discount) || 20,
+    search_keywords: profile.search_keywords || '',
+    price_min: profile.price_min || '',
+    price_max: profile.price_max || '',
+    max_posts_per_day: parseInt(profile.max_posts_per_day) || 6,
+    claude_prompt: profile.claude_prompt || '',
+  });
+}
+function deletePostProfile(id) {
+  return db.prepare('DELETE FROM post_profiles WHERE id = ?').run(id);
+}
+function togglePostProfile(id, active) {
+  return db.prepare("UPDATE post_profiles SET active = ?, updated_at = datetime('now') WHERE id = ?").run(active ? 1 : 0, id);
 }
 function wasPostedRecently(productId, hours = 24) {
   const result = db.prepare(`
@@ -826,6 +938,8 @@ module.exports = {
   addProduct, updateProduct, deleteProduct, toggleProduct,
   addPostHistory, getPostHistory, getPostsToday, wasPostedRecently, wasPostedRecentlyByMlId, clearHistory,
   addLog, getLogs, clearLogs,
+  getPostsTodayForProfile, getAllPostProfiles, getActivePostProfiles, getPostProfileById,
+  addPostProfile, updatePostProfile, deletePostProfile, togglePostProfile,
   getSetting, setSetting, getAllSettings,
   isBlocked, unblockProduct,
   getAllScheduledMessages, getScheduledMessageById, addScheduledMessage, updateScheduledMessage,

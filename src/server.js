@@ -205,24 +205,65 @@ app.delete('/api/logs', (req, res) => {
   res.json({ ok: true });
 });
 
-// ===== POST AUTOMÁTICO (busca produto no ML e posta) =====
-// DEVE VIR ANTES de /api/post/:id para o Express não confundir "auto" com um ID
+// ===== POST MANUAL =====
 
-app.post('/api/post/auto', async (req, res) => {
+app.post('/api/post/:id', async (req, res) => {
   try {
-    const result = await bot.runAutoPost(io);
-    res.json(result);
+    const text = await bot.sendManualPost(req.params.id, req.body?.profileId || null, io);
+    res.json({ ok: true, text });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// ===== POST MANUAL =====
+// ===== PERFIS DE POSTAGEM =====
 
-app.post('/api/post/:id', async (req, res) => {
+app.get('/api/post-profiles', (req, res) => {
+  res.json(db.getAllPostProfiles());
+});
+
+app.get('/api/post-profiles/:id', (req, res) => {
+  const profile = db.getPostProfileById(req.params.id);
+  if (!profile) return res.status(404).json({ error: 'Perfil não encontrado.' });
+  res.json(profile);
+});
+
+app.post('/api/post-profiles', (req, res) => {
   try {
-    const text = await bot.sendManualPost(req.params.id, io);
-    res.json({ ok: true, text });
+    const result = db.addPostProfile(req.body);
+    bot.reloadCron(io);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.put('/api/post-profiles/:id', (req, res) => {
+  try {
+    db.updatePostProfile(req.params.id, req.body);
+    bot.reloadCron(io);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/post-profiles/:id', (req, res) => {
+  db.deletePostProfile(req.params.id);
+  bot.reloadCron(io);
+  res.json({ ok: true });
+});
+
+app.patch('/api/post-profiles/:id/toggle', (req, res) => {
+  db.togglePostProfile(req.params.id, req.body.active);
+  bot.reloadCron(io);
+  res.json({ ok: true });
+});
+
+app.post('/api/post-profiles/:id/post-now', async (req, res) => {
+  try {
+    const result = await bot.runAutoPost(io, req.params.id);
+    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
