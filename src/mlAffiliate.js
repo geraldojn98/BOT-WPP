@@ -7,7 +7,9 @@ const LINKBUILDER_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder';
 
 function legacySessionDir() { return path.join(__dirname, '../data/ml-session'); }
 function legacyCookiesFile() { return path.join(__dirname, '../data/ml-cookies.json'); }
-function sessionDirFor(userId) { return path.join(__dirname, '../data/ml-session', String(userId)); }
+// "ml-sessions" (plural) — pasta própria por usuário, distinta da antiga "ml-session"
+// (singular, legado) pra evitar mover um diretório pra dentro de si mesmo na migração.
+function sessionDirFor(userId) { return path.join(__dirname, '../data/ml-sessions', String(userId)); }
 function cookiesFileFor(userId) { return path.join(__dirname, '../data', `ml-cookies-${userId}.json`); }
 
 /**
