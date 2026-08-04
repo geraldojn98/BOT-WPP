@@ -45,13 +45,31 @@ No painel do Railway: **Service → Variables → Add Variable**
 | `INSTAGRAM_PAGE_ACCESS_TOKEN` | Page Access Token de longa duração | Só p/ automação de Instagram |
 | `INSTAGRAM_APP_SECRET` | App Secret do app criado na Meta | Só p/ automação de Instagram |
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | Um texto aleatório escolhido por você | Só p/ automação de Instagram |
+| `RESEND_API_KEY` | Chave da API do [Resend](https://resend.com), usada pra mandar o e-mail de confirmação de cadastro | Sim, pra autocadastro funcionar |
+| `RESEND_FROM_EMAIL` | E-mail remetente (ver nota abaixo) | Opcional (usa `onboarding@resend.dev` se não definir) |
 | `PORT` | `3000` | Auto (Railway define) |
 
-> ⚠️ **Login:** o painel agora tem tela de login própria com autocadastro — qualquer
-> pessoa com o link consegue criar a própria conta e conectar seu próprio WhatsApp,
-> totalmente isolado dos outros usuários. `PANEL_USER`/`PANEL_PASS` só servem pra criar
-> a primeira conta automaticamente (a sua) na primeira vez que o app sobe; depois disso
-> não têm mais efeito — pra trocar sua senha, é pela própria tela de login/cadastro.
+> ⚠️ **Login:** o painel agora tem tela de login própria com autocadastro **por e-mail**
+> — qualquer pessoa com o link consegue criar a própria conta (confirmando o e-mail
+> antes de poder entrar) e conectar seu próprio WhatsApp, totalmente isolado dos outros
+> usuários. `PANEL_USER`/`PANEL_PASS` só servem pra criar a primeira conta
+> automaticamente (a sua) na primeira vez que o app sobe; depois disso não têm mais
+> efeito — pra trocar sua senha, é pela própria tela de login/cadastro.
+
+> ⚠️ **E-mail de confirmação (Resend):**
+> 1. Crie uma conta em [resend.com](https://resend.com) e gere uma API key em
+>    **API Keys → Create API Key**. Coloque em `RESEND_API_KEY`.
+> 2. **Modo sandbox (padrão, sem configurar nada):** usando `onboarding@resend.dev`
+>    como remetente, o Resend só entrega e-mails pro endereço cadastrado na SUA
+>    própria conta Resend — funciona pra você testar, mas **outras pessoas que se
+>    cadastrarem não vão receber o e-mail de confirmação**.
+> 3. **Pra vender o app de verdade** (qualquer pessoa consiga se cadastrar e receber
+>    o e-mail): em **Domains → Add Domain** no Resend, verifique um domínio seu
+>    (adiciona uns registros DNS — o Resend mostra o passo a passo). Depois, defina
+>    `RESEND_FROM_EMAIL` como algo desse domínio, ex: `naoresponda@seudominio.com`.
+> 4. Sem `RESEND_API_KEY` configurada (ex: rodando local), o bot não trava — só
+>    registra o link de confirmação no log do servidor em vez de mandar e-mail de
+>    verdade, pra dar pra testar o cadastro sem precisar configurar isso localmente.
 
 ---
 

@@ -22,7 +22,7 @@ const authDb = new DatabaseSync(AUTH_DB_PATH);
 authDb.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE,
     password_hash TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
   );
@@ -43,7 +43,44 @@ authDb.exec(`
     created_at TEXT DEFAULT (datetime('now')),
     last_used_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS email_verification_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
+
+// Migração: a tabela users já existia com "username TEXT UNIQUE NOT NULL" (de
+// antes do cadastro por e-mail) — ALTER TABLE não remove um NOT NULL existente,
+// então contas novas (sem username) travariam nessa constraint. Só o jeito é
+// recriar a tabela sem o NOT NULL, preservando os dados (padrão do SQLite pra
+// mudança de constraint). Roda uma vez só, detectando a constraint antiga.
+try {
+  const usernameCol = authDb.prepare("PRAGMA table_info(users)").all().find(c => c.name === 'username');
+  if (usernameCol && usernameCol.notnull === 1) {
+    authDb.exec(`
+      CREATE TABLE users_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password_hash TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      INSERT INTO users_new (id, username, password_hash, created_at)
+        SELECT id, username, password_hash, created_at FROM users;
+      DROP TABLE users;
+      ALTER TABLE users_new RENAME TO users;
+    `);
+    console.log('[DB] Migração: username da tabela users deixou de ser obrigatório (cadastro agora é por e-mail).');
+  }
+} catch (err) { console.error('[DB] Erro na migração da constraint de username:', err.message); }
+
+// Idem: cadastro agora é por e-mail (username fica só como identificador legado
+// de quem já tinha conta antes disso, ex: criada a partir de PANEL_USER).
+try { authDb.exec('ALTER TABLE users ADD COLUMN email TEXT'); } catch (_) { /* coluna já existe */ }
+try { authDb.exec('ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0'); } catch (_) { /* coluna já existe */ }
+try { authDb.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL'); } catch (_) {}
 
 // Migração segura: a tabela webhook_tokens já existia (sem user_id) de antes do
 // multiusuário — CREATE TABLE IF NOT EXISTS acima não adiciona a coluna numa
@@ -78,14 +115,33 @@ try {
 } catch (_) { /* já migrado ou erro não-crítico */ }
 
 // ===== USUÁRIOS E SESSÕES (login) =====
+// Contas novas se cadastram por e-mail (createUserWithEmail); "username" só
+// existe em contas legadas (criadas a partir de PANEL_USER antes do e-mail
+// virar o identificador padrão) — getUserByIdentifier cobre os dois casos.
 function createUser(username, passwordHash) {
   return authDb.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, passwordHash);
+}
+function createUserWithEmail(email, passwordHash) {
+  return authDb.prepare('INSERT INTO users (email, password_hash, email_verified) VALUES (?, ?, 0)').run(email, passwordHash);
 }
 function getUserByUsername(username) {
   return authDb.prepare('SELECT * FROM users WHERE username = ?').get(username);
 }
+function getUserByEmail(email) {
+  return authDb.prepare('SELECT * FROM users WHERE email = ?').get((email || '').trim().toLowerCase());
+}
+function getUserByIdentifier(identifier) {
+  const id = (identifier || '').trim();
+  return getUserByEmail(id) || getUserByUsername(id);
+}
 function getUserById(id) {
   return authDb.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+function deleteUnverifiedUser(id) {
+  return authDb.prepare('DELETE FROM users WHERE id = ? AND email_verified = 0').run(id);
+}
+function markEmailVerified(userId) {
+  return authDb.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(userId);
 }
 function createSession(userId, days = 30) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -103,6 +159,28 @@ function getSessionUser(token) {
 }
 function deleteSession(token) {
   return authDb.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
+
+// ===== CONFIRMAÇÃO DE E-MAIL =====
+function createEmailVerificationToken(userId, hours = 48) {
+  // Invalida tokens antigos desse usuário — só o mais recente vale (evita
+  // confusão se a pessoa pedir reenvio mais de uma vez).
+  authDb.prepare('DELETE FROM email_verification_tokens WHERE user_id = ?').run(userId);
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+  authDb.prepare('INSERT INTO email_verification_tokens (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  return token;
+}
+function getEmailVerificationToken(token) {
+  if (!token) return null;
+  return authDb.prepare(`
+    SELECT t.*, u.email, u.email_verified FROM email_verification_tokens t
+    JOIN users u ON u.id = t.user_id
+    WHERE t.token = ?
+  `).get(token) || null;
+}
+function deleteEmailVerificationToken(token) {
+  return authDb.prepare('DELETE FROM email_verification_tokens WHERE token = ?').run(token);
 }
 
 // ===== TOKENS DE WEBHOOK DE ENTRADA (globais — precisam ser buscáveis só pelo
@@ -1111,7 +1189,9 @@ try {
 }
 
 module.exports = {
-  createUser, getUserByUsername, getUserById, createSession, getSessionUser, deleteSession,
+  createUser, createUserWithEmail, getUserByUsername, getUserByEmail, getUserByIdentifier,
+  getUserById, deleteUnverifiedUser, markEmailVerified, createSession, getSessionUser, deleteSession,
+  createEmailVerificationToken, getEmailVerificationToken, deleteEmailVerificationToken,
   getAllWebhookTokensForUser, addWebhookToken, deleteWebhookToken, toggleWebhookToken,
   getWebhookTokenByValue, getWebhookTokenById, touchWebhookTokenUsage,
   getUserDb,

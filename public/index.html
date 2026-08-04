@@ -1528,6 +1528,12 @@ async function loadCurrentUser() {
   } catch (_) {}
 }
 document.addEventListener('DOMContentLoaded', loadCurrentUser);
+document.addEventListener('DOMContentLoaded', () => {
+  if (new URLSearchParams(window.location.search).get('verified') === '1') {
+    toast('✅ E-mail confirmado! Sua conta está ativa.');
+    window.history.replaceState({}, '', '/');
+  }
+});
 
 // ===== ESTADO GLOBAL =====
 let allGroups = [];

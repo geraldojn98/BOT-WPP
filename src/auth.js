@@ -30,21 +30,42 @@ function checkRateLimit(ip) {
   return entry.count <= MAX_ATTEMPTS;
 }
 
-function signup(username, password) {
-  username = (username || '').trim();
-  if (!username || username.length < 3) throw new Error('Usuário precisa ter pelo menos 3 caracteres.');
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Cadastro por e-mail: cria a conta já pedindo confirmação — quem chama
+// (server.js) é responsável por gerar o token de verificação e mandar o
+// e-mail. Se já existe uma conta com esse e-mail mas ainda não confirmada,
+// devolve ela mesma (isNew:false) em vez de travar — permite reenviar a
+// confirmação sem obrigar a pessoa a usar outro e-mail.
+function signup(email, password) {
+  email = (email || '').trim().toLowerCase();
+  if (!EMAIL_RE.test(email)) throw new Error('Informe um e-mail válido.');
   if (!password || password.length < MIN_PASSWORD_LEN) throw new Error(`Senha precisa ter pelo menos ${MIN_PASSWORD_LEN} caracteres.`);
-  if (db.getUserByUsername(username)) throw new Error('Esse usuário já existe.');
+
+  const existing = db.getUserByEmail(email);
+  if (existing) {
+    if (existing.email_verified) throw new Error('Já existe uma conta com esse e-mail — faça login.');
+    return { user: existing, isNew: false };
+  }
 
   const hash = hashPassword(password);
-  const result = db.createUser(username, hash);
-  return db.getUserById(result.lastInsertRowid);
+  const result = db.createUserWithEmail(email, hash);
+  return { user: db.getUserById(result.lastInsertRowid), isNew: true };
 }
 
-function login(username, password) {
-  const user = db.getUserByUsername((username || '').trim());
+// Login aceita e-mail (contas novas) ou usuário (contas legadas criadas antes
+// do cadastro por e-mail existir, ex: a partir de PANEL_USER).
+function login(identifier, password) {
+  const user = db.getUserByIdentifier(identifier);
   if (!user || !verifyPassword(password || '', user.password_hash)) {
-    throw new Error('Usuário ou senha incorretos.');
+    throw new Error('E-mail/usuário ou senha incorretos.');
+  }
+  // Contas legadas (sem e-mail cadastrado) nunca passaram pelo fluxo de
+  // confirmação — só bloqueia quem tem e-mail e ainda não confirmou.
+  if (user.email && !user.email_verified) {
+    const err = new Error('Confirme seu e-mail antes de entrar — verifique sua caixa de entrada (e o spam).');
+    err.emailNotVerified = true;
+    throw err;
   }
   return user;
 }
@@ -70,7 +91,7 @@ function requireAuthApi(req, res, next) {
   const user = db.getSessionUser(token);
   if (!user) return res.status(401).json({ error: 'Não autenticado.' });
   req.userId = user.id;
-  req.username = user.username;
+  req.username = user.email || user.username;
   req.userDb = db.getUserDb(user.id);
   next();
 }
@@ -81,7 +102,7 @@ function requireAuthPage(req, res, next) {
   const user = db.getSessionUser(token);
   if (!user) return res.redirect('/login.html');
   req.userId = user.id;
-  req.username = user.username;
+  req.username = user.email || user.username;
   next();
 }
 

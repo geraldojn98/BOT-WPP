@@ -49,7 +49,12 @@
     }
     button[type=submit]:disabled { opacity: 0.6; cursor: not-allowed; }
     button[type=submit]:hover:not(:disabled) { opacity: 0.9; }
-    .msg { font-size: 0.85rem; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; display: none; }
+    .btn-link {
+      width: 100%; padding: 10px; background: none; border: none; color: var(--blue, #2980b9);
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; margin-top: 10px;
+    }
+    .btn-link:hover { text-decoration: underline; }
+    .msg { font-size: 0.85rem; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; display: none; line-height: 1.5; }
     .msg.err { background: #fdecea; color: var(--red); display: block; }
     .msg.ok { background: #e8f8ef; color: var(--green); display: block; }
     .hint { font-size: 0.78rem; color: var(--muted); margin-top: 14px; text-align: center; line-height: 1.5; }
@@ -66,11 +71,12 @@
     </div>
 
     <div id="msg" class="msg"></div>
+    <button type="button" class="btn-link" id="btn-resend" style="display:none;" onclick="resendVerification()">Reenviar e-mail de confirmação</button>
 
     <form id="form" onsubmit="submitForm(event)">
       <div class="form-group">
-        <label for="username">Usuário</label>
-        <input type="text" id="username" autocomplete="username" required minlength="3" />
+        <label for="email">E-mail</label>
+        <input type="email" id="email" autocomplete="email" required />
       </div>
       <div class="form-group">
         <label for="password">Senha</label>
@@ -80,12 +86,13 @@
     </form>
 
     <div class="hint" id="signup-hint" style="display:none;">
-      Ao criar uma conta, você poderá conectar seu próprio número de WhatsApp e configurar suas automações — tudo separado dos outros usuários.
+      Ao criar uma conta, você recebe um e-mail de confirmação — depois de confirmar, você conecta seu próprio número de WhatsApp e configura suas automações, tudo separado dos outros usuários.
     </div>
   </div>
 
   <script>
     let mode = 'login';
+    let lastEmailTried = '';
 
     function switchTab(next) {
       mode = next;
@@ -94,36 +101,80 @@
       document.getElementById('btn-submit').textContent = next === 'login' ? 'Entrar' : 'Criar conta';
       document.getElementById('password').autocomplete = next === 'login' ? 'current-password' : 'new-password';
       document.getElementById('signup-hint').style.display = next === 'signup' ? 'block' : 'none';
+      hideMsg();
+    }
+
+    function hideMsg() {
       document.getElementById('msg').style.display = 'none';
+      document.getElementById('btn-resend').style.display = 'none';
+    }
+
+    function showMsg(kind, text) {
+      const msg = document.getElementById('msg');
+      msg.className = 'msg ' + kind;
+      msg.textContent = text;
+      msg.style.display = 'block';
     }
 
     async function submitForm(e) {
       e.preventDefault();
       const btn = document.getElementById('btn-submit');
-      const msg = document.getElementById('msg');
-      msg.style.display = 'none';
+      hideMsg();
       btn.disabled = true;
       btn.textContent = mode === 'login' ? 'Entrando...' : 'Criando conta...';
 
-      const username = document.getElementById('username').value.trim();
+      const email = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
+      lastEmailTried = email;
 
       try {
         const res = await fetch(`/api/auth/${mode}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify({ email, password }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Erro inesperado.');
+        if (!res.ok) {
+          if (data.emailNotVerified) {
+            showMsg('err', '❌ ' + data.error);
+            document.getElementById('btn-resend').style.display = 'block';
+            return;
+          }
+          throw new Error(data.error || 'Erro inesperado.');
+        }
+        if (mode === 'signup') {
+          showMsg('ok', '✅ ' + data.message);
+          document.getElementById('form').reset();
+          return;
+        }
         window.location.href = '/';
       } catch (err) {
-        msg.className = 'msg err';
-        msg.textContent = '❌ ' + err.message;
-        msg.style.display = 'block';
+        showMsg('err', '❌ ' + err.message);
+      } finally {
         btn.disabled = false;
         btn.textContent = mode === 'login' ? 'Entrar' : 'Criar conta';
       }
+    }
+
+    async function resendVerification() {
+      hideMsg();
+      try {
+        const res = await fetch('/api/auth/resend-verification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: lastEmailTried }),
+        });
+        const data = await res.json();
+        showMsg('ok', '✅ ' + data.message);
+      } catch (_) {
+        showMsg('err', '❌ Erro ao reenviar. Tente de novo em instantes.');
+      }
+    }
+
+    // Mensagens vindas do link de confirmação de e-mail
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verify') === 'expired') {
+      showMsg('err', '❌ Esse link de confirmação expirou ou é inválido. Crie a conta de novo ou peça reenvio pela tela de login.');
     }
   </script>
 </body>

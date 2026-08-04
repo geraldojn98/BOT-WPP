@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 const db = require('./database');
 const bot = require('./bot');
 const auth = require('./auth');
+const email_ = require('./email');
 const webhooks = require('./webhooks');
 const instagram = require('./instagram');
 const { getProductInfo, generateAffiliateLink } = require('./mercadolivre');
@@ -99,31 +100,69 @@ app.post('/api/instagram/webhook', (req, res) => {
 // próprio painel (index.html) e as rotas /api/* exigem sessão válida.
 app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
-app.post('/api/auth/signup', (req, res) => {
+// Constrói a URL de confirmação a partir da própria requisição — evita depender
+// de uma variável de ambiente separada que poderia ficar desatualizada.
+function verifyUrlFor(req, token) {
+  return `${req.protocol}://${req.get('host')}/api/auth/verify-email?token=${token}`;
+}
+
+app.post('/api/auth/signup', async (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (!auth.checkRateLimit('signup:' + ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
   try {
-    const { username, password } = req.body;
-    const user = auth.signup(username, password);
-    const token = db.createSession(user.id);
-    auth.setSessionCookie(res, token);
-    res.json({ ok: true, username: user.username });
+    const { email, password } = req.body;
+    const { user } = auth.signup(email, password);
+    const token = db.createEmailVerificationToken(user.id);
+    const emailResult = await email_.sendVerificationEmail(user.email, verifyUrlFor(req, token));
+    res.json({
+      ok: true,
+      message: 'Quase lá! Enviamos um e-mail de confirmação — clique no link pra ativar sua conta.',
+      emailSent: emailResult.ok,
+    });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.post('/api/auth/resend-verification', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (!auth.checkRateLimit('resend:' + ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+  try {
+    const user = db.getUserByEmail(req.body.email);
+    // Não revela se o e-mail existe ou não — resposta igual nos dois casos.
+    if (user && !user.email_verified) {
+      const token = db.createEmailVerificationToken(user.id);
+      await email_.sendVerificationEmail(user.email, verifyUrlFor(req, token));
+    }
+    res.json({ ok: true, message: 'Se esse e-mail estiver cadastrado e pendente de confirmação, reenviamos o link.' });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/auth/verify-email', (req, res) => {
+  const rec = db.getEmailVerificationToken(req.query.token);
+  if (!rec || new Date(rec.expires_at) < new Date()) {
+    return res.redirect('/login.html?verify=expired');
+  }
+  db.markEmailVerified(rec.user_id);
+  db.deleteEmailVerificationToken(req.query.token);
+  const session = db.createSession(rec.user_id);
+  auth.setSessionCookie(res, session);
+  res.redirect('/?verified=1');
 });
 
 app.post('/api/auth/login', (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (!auth.checkRateLimit('login:' + ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
   try {
-    const { username, password } = req.body;
-    const user = auth.login(username, password);
+    const { email, password } = req.body;
+    const user = auth.login(email, password);
     const token = db.createSession(user.id);
     auth.setSessionCookie(res, token);
-    res.json({ ok: true, username: user.username });
+    res.json({ ok: true, username: user.email || user.username });
   } catch (err) {
-    res.status(401).json({ error: err.message });
+    res.status(err.emailNotVerified ? 403 : 401).json({ error: err.message, emailNotVerified: !!err.emailNotVerified });
   }
 });
 
@@ -138,7 +177,7 @@ app.get('/api/auth/me', (req, res) => {
   const token = req.cookies?.[auth.COOKIE_NAME];
   const user = db.getSessionUser(token);
   if (!user) return res.status(401).json({ error: 'Não autenticado.' });
-  res.json({ username: user.username });
+  res.json({ username: user.email || user.username });
 });
 
 app.get('/', auth.requireAuthPage, (req, res) => {
