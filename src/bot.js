@@ -315,7 +315,7 @@ async function runPost(userId, profile, io) {
     const originLabel = productOriginLabel(fallback, isNew);
 
     console.log(`[Post] ${tag} Gerando texto para: ${product.title} (${product.discount_percent}% off) — ${originLabel}`);
-    const text = await generatePostText(product, profile.claude_prompt || null);
+    const text = await generatePostText(product, profile.claude_prompt || null, userDb);
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
 
@@ -347,7 +347,7 @@ async function sendManualPost(userId, productId, profileId, io) {
   const groupIds = resolveProfileGroupIds(userDb, profile);
   if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
 
-  const text = await generatePostText(product, profile.claude_prompt || null);
+  const text = await generatePostText(product, profile.claude_prompt || null, userDb);
   const link = product.affiliate_url || product.url;
   const finalText = `${link}\n\n${text}`;
 
@@ -956,7 +956,7 @@ async function runAutoPost(userId, io, profileId) {
     }
     const originLabel = productOriginLabel(fallback, isNew);
 
-    const text = await generatePostText(product, profile.claude_prompt || null);
+    const text = await generatePostText(product, profile.claude_prompt || null, userDb);
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
 

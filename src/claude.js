@@ -1,12 +1,11 @@
-const { getSetting } = require('./database');
-
-async function generatePostText(product, promptOverride = null) {
+async function generatePostText(product, promptOverride = null, userDb = null) {
   // Se tiver chave da Anthropic, usa o Claude
   if (process.env.ANTHROPIC_API_KEY && process.env.ANTHROPIC_API_KEY !== 'sua_chave_aqui') {
     const Anthropic = require('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    // promptOverride vem do perfil de postagem (tom próprio); vazio cai pro prompt padrão global
-    const userPrompt = promptOverride || getSetting('claude_prompt') || 'Crie uma mensagem de divulgação atraente e persuasiva para o produto abaixo. Use emojis, destaque o desconto e inclua chamada para ação. Máximo 300 caracteres.';
+    // promptOverride vem do perfil de postagem (tom próprio); vazio cai pro prompt padrão
+    // do usuário (Configurações) — e se nem isso existir, um texto genérico de último recurso.
+    const userPrompt = promptOverride || userDb?.getSetting('claude_prompt') || 'Crie uma mensagem de divulgação atraente e persuasiva para o produto abaixo. Use emojis, destaque o desconto e inclua chamada para ação. Máximo 300 caracteres.';
     const productInfo = `
 Produto: ${product.title}
 Preço atual: R$ ${product.price ? Number(product.price).toFixed(2) : 'N/A'}
