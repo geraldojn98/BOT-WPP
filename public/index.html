@@ -1111,7 +1111,12 @@
       <div class="form-group">
         <div class="form-label">📱 Grupos deste perfil</div>
         <div class="form-desc">Selecione os grupos que devem receber os posts gerados por este perfil.</div>
-        <div id="pp-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
+        <div id="pp-group-filter" style="display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+          <button type="button" class="btn btn-sm" data-filter="all" onclick="setPpGroupFilter('all')">Todos</button>
+          <button type="button" class="btn btn-sm" data-filter="open" onclick="setPpGroupFilter('open')">🔓 Abertos (todos podem enviar)</button>
+          <button type="button" class="btn btn-sm" data-filter="closed" onclick="setPpGroupFilter('closed')">🔒 Fechados (só admin envia)</button>
+        </div>
+        <div id="pp-group-selector" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;border:1.5px solid var(--border);border-radius:8px;padding:10px;"></div>
       </div>
 
       <div class="form-group">
@@ -2742,20 +2747,68 @@ async function loadPostProfiles() {
   }).join('');
 }
 
+let ppAllGroups = [];
+let ppSelectedGroupIds = [];
+let ppGroupFilter = 'all';
+
 async function loadPpGroupSelector(selectedIds = []) {
   const el = document.getElementById('pp-group-selector');
-  let groups = [];
-  try { groups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
-  if (!groups.length) {
+  ppAllGroups = [];
+  try { ppAllGroups = await fetch('/api/groups').then(r => r.json()); } catch (_) {}
+  ppSelectedGroupIds = selectedIds.slice();
+  ppGroupFilter = 'all';
+  if (!ppAllGroups.length) {
     el.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Conecte o WhatsApp para selecionar grupos</span>';
     return;
   }
-  el.innerHTML = groups.map(g => `
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
-      <input type="checkbox" value="${g.id}" class="pp-group-cb" ${selectedIds.includes(g.id) ? 'checked' : ''} style="width:auto;cursor:pointer;" />
-      ${g.isAdmin ? '👑' : '💬'} ${g.name} <span style="color:var(--muted);font-size:0.75rem;">(${g.participants})</span>
-    </label>
-  `).join('');
+  renderPpGroupSelector();
+}
+
+function syncPpSelectedGroupIds() {
+  // preserva o que foi marcado/desmarcado antes de trocar o filtro (alguns itens somem da tela)
+  const checked = Array.from(document.querySelectorAll('.pp-group-cb:checked')).map(cb => cb.value);
+  const uncheckedVisible = Array.from(document.querySelectorAll('.pp-group-cb:not(:checked)')).map(cb => cb.value);
+  ppSelectedGroupIds = ppSelectedGroupIds.filter(id => !uncheckedVisible.includes(id));
+  for (const id of checked) if (!ppSelectedGroupIds.includes(id)) ppSelectedGroupIds.push(id);
+  return ppSelectedGroupIds;
+}
+
+function setPpGroupFilter(filter) {
+  syncPpSelectedGroupIds();
+  ppGroupFilter = filter;
+  renderPpGroupSelector();
+}
+
+function renderPpGroupSelector() {
+  const el = document.getElementById('pp-group-selector');
+  document.querySelectorAll('#pp-group-filter .btn').forEach(btn => {
+    btn.className = 'btn btn-sm ' + (btn.dataset.filter === ppGroupFilter ? 'btn-blue' : 'btn-ghost');
+  });
+
+  let groups = ppAllGroups;
+  if (ppGroupFilter !== 'all') {
+    groups = groups.filter(g => ppGroupFilter === 'open' ? g.isOpen !== false : g.isOpen === false);
+  }
+  const admins = groups.filter(g => g.isAdmin);
+  const members = groups.filter(g => !g.isAdmin);
+
+  function renderItem(g) {
+    return `
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;">
+        <input type="checkbox" value="${g.id}" class="pp-group-cb" ${ppSelectedGroupIds.includes(g.id) ? 'checked' : ''} style="width:auto;cursor:pointer;" />
+        ${g.isAdmin ? '👑' : '💬'} ${g.name}${g.isOpen === false ? ' 🔒' : ' 🔓'} <span style="color:var(--muted);font-size:0.75rem;">(${g.participants})</span>
+      </label>
+    `;
+  }
+
+  let html = '';
+  if (admins.length) {
+    html += `<div style="font-size:0.78rem;font-weight:700;color:var(--orange);margin:4px 0 4px;">👑 GRUPOS QUE VOCÊ É ADMINISTRADOR (${admins.length})</div>${admins.map(renderItem).join('')}`;
+  }
+  if (members.length) {
+    html += `<div style="font-size:0.78rem;font-weight:700;color:var(--muted);margin:12px 0 4px;">💬 GRUPOS QUE VOCÊ É PARTICIPANTE (${members.length})</div>${members.map(renderItem).join('')}`;
+  }
+  el.innerHTML = html || '<span style="color:var(--muted);font-size:0.85rem;">Nenhum grupo encontrado com esse filtro.</span>';
 }
 
 async function loadPpSeriesSelector(selectedIds = []) {
@@ -2859,7 +2912,7 @@ async function savePostProfile(e) {
   e.preventDefault();
   const id = document.getElementById('pp-id').value;
   const activeDays = Array.from(document.querySelectorAll('#pp-day-buttons .day-btn.active')).map(b => b.dataset.ppday);
-  const selectedGroups = Array.from(document.querySelectorAll('.pp-group-cb:checked')).map(cb => cb.value);
+  const selectedGroups = syncPpSelectedGroupIds();
   const selectedSeries = Array.from(document.querySelectorAll('.pp-series-cb:checked')).map(cb => cb.value);
   const times = ppTimes.slice().sort((a,b) => a.localeCompare(b));
 
