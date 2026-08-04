@@ -10,6 +10,7 @@
   <meta name="theme-color" content="#FFE600" />
   <link rel="manifest" href="/manifest.json" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="icon" type="image/png" href="/favicon-32.png" />
   <title>ML Bot — Painel de Controle</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -33,7 +34,7 @@
     header { background: var(--primary); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; box-shadow: 0 2px 8px rgba(0,0,0,0.12); position: sticky; top: 0; z-index: 50; }
     .header-left { display: flex; align-items: center; gap: 10px; }
     header h1 { font-size: 1.2rem; font-weight: 800; }
-    .header-logo { font-size: 1.6rem; }
+    .header-logo { width: 32px; height: 32px; border-radius: 8px; display: block; }
     .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.08); padding: 6px 12px; border-radius: 20px; font-size: 0.82rem; font-weight: 600; }
     .dot { width: 8px; height: 8px; border-radius: 50%; background: #aaa; flex-shrink: 0; }
     .dot.connected { background: var(--green); box-shadow: 0 0 0 3px rgba(0,166,80,0.25); }
@@ -256,7 +257,7 @@
       #mobile-nav button { position: relative; }
 
       header h1 { font-size: 1rem; }
-      .header-logo { font-size: 1.3rem; }
+      .header-logo { width: 26px; height: 26px; }
       .status-pill { font-size: 0.75rem; padding: 5px 10px; }
       .modal { padding: 20px 16px; }
       .modal-overlay { padding: 0; align-items: flex-end; }
@@ -272,7 +273,7 @@
 
 <header>
   <div class="header-left">
-    <span class="header-logo">🤖</span>
+    <img class="header-logo" src="/logo-96.png" alt="Zappygram" />
     <h1>ML WhatsApp Bot</h1>
   </div>
   <div class="status-pill">
