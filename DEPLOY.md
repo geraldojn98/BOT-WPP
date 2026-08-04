@@ -34,8 +34,8 @@ No painel do Railway: **Service → Variables → Add Variable**
 
 | Variável | Valor | Obrigatório |
 |----------|-------|-------------|
-| `PANEL_USER` | Nome de usuário do painel (ex: `admin`) | ✅ Sim |
-| `PANEL_PASS` | Senha do painel (ex: `minhasenha123`) | ✅ Sim |
+| `PANEL_USER` | Usado só na primeira vez, pra criar sua conta de login automaticamente (ex: `admin`) | Opcional |
+| `PANEL_PASS` | Senha dessa primeira conta (ex: `minhasenha123`) | Opcional |
 | `ANTHROPIC_API_KEY` | Sua chave da API Anthropic | Recomendado |
 | `ML_APP_ID` | ID do app Mercado Livre | Opcional |
 | `ML_CLIENT_SECRET` | Secret do app ML | Opcional |
@@ -47,8 +47,11 @@ No painel do Railway: **Service → Variables → Add Variable**
 | `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` | Um texto aleatório escolhido por você | Só p/ automação de Instagram |
 | `PORT` | `3000` | Auto (Railway define) |
 
-> ⚠️ **IMPORTANTE:** Defina `PANEL_USER` e `PANEL_PASS` antes de tornar o app público.
-> O painel terá uma tela de login com essas credenciais.
+> ⚠️ **Login:** o painel agora tem tela de login própria com autocadastro — qualquer
+> pessoa com o link consegue criar a própria conta e conectar seu próprio WhatsApp,
+> totalmente isolado dos outros usuários. `PANEL_USER`/`PANEL_PASS` só servem pra criar
+> a primeira conta automaticamente (a sua) na primeira vez que o app sobe; depois disso
+> não têm mais efeito — pra trocar sua senha, é pela própria tela de login/cadastro.
 
 ---
 

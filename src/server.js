@@ -3,8 +3,10 @@ const crypto = require('crypto');
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const cookieParser = require('cookie-parser');
 const db = require('./database');
 const bot = require('./bot');
+const auth = require('./auth');
 const webhooks = require('./webhooks');
 const instagram = require('./instagram');
 const { getProductInfo, generateAffiliateLink } = require('./mercadolivre');
@@ -12,6 +14,10 @@ const { setupMlSession, isSessionReady } = require('./mlAffiliate');
 const { generateCustomMessage } = require('./claude');
 
 const app = express();
+// Railway roda atrás de um proxy — sem isso, req.ip retorna o IP do proxy pra
+// todo mundo, e o rate-limit de login/cadastro passaria a valer pra TODOS os
+// usuários juntos em vez de por pessoa.
+app.set('trust proxy', true);
 const server = http.createServer(app);
 
 // Tenta carregar socket.io (opcional)
@@ -25,6 +31,7 @@ try {
 } catch {}
 
 app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+app.use(cookieParser());
 
 // ===== WEBHOOK DE ENTRADA (sistemas externos → WhatsApp) =====
 // Registrado ANTES do basic-auth do painel: autentica via token próprio (X-Webhook-Token),
@@ -62,25 +69,61 @@ app.post('/api/instagram/webhook', (req, res) => {
   });
 });
 
-// ===== AUTENTICAÇÃO BÁSICA (ativa se PANEL_USER e PANEL_PASS estiverem definidos) =====
-if (process.env.PANEL_USER && process.env.PANEL_PASS) {
-  app.use((req, res, next) => {
-    const auth = req.headers.authorization;
-    if (!auth || !auth.startsWith('Basic ')) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="ML Bot Panel"');
-      return res.status(401).send('Login necessário');
-    }
-    const [user, pass] = Buffer.from(auth.split(' ')[1], 'base64').toString().split(':');
-    if (user !== process.env.PANEL_USER || pass !== process.env.PANEL_PASS) {
-      res.setHeader('WWW-Authenticate', 'Basic realm="ML Bot Panel"');
-      return res.status(401).send('Usuário ou senha inválidos');
-    }
-    next();
-  });
-  console.log('[Auth] Painel protegido com usuário e senha.');
-}
+// ===== LOGIN (cada usuário tem sua própria conta, com seu próprio WhatsApp) =====
+// Assets estáticos (login.html, ícones, manifest, css/js) ficam públicos — só o
+// próprio painel (index.html) e as rotas /api/* exigem sessão válida.
+app.use(express.static(path.join(__dirname, '../public'), { index: false }));
 
-app.use(express.static(path.join(__dirname, '../public')));
+app.post('/api/auth/signup', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (!auth.checkRateLimit('signup:' + ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+  try {
+    const { username, password } = req.body;
+    const user = auth.signup(username, password);
+    const token = db.createSession(user.id);
+    auth.setSessionCookie(res, token);
+    res.json({ ok: true, username: user.username });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress;
+  if (!auth.checkRateLimit('login:' + ip)) return res.status(429).json({ error: 'Muitas tentativas. Tente novamente em alguns minutos.' });
+  try {
+    const { username, password } = req.body;
+    const user = auth.login(username, password);
+    const token = db.createSession(user.id);
+    auth.setSessionCookie(res, token);
+    res.json({ ok: true, username: user.username });
+  } catch (err) {
+    res.status(401).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const token = req.cookies?.[auth.COOKIE_NAME];
+  if (token) db.deleteSession(token);
+  auth.clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  const token = req.cookies?.[auth.COOKIE_NAME];
+  const user = db.getSessionUser(token);
+  if (!user) return res.status(401).json({ error: 'Não autenticado.' });
+  res.json({ username: user.username });
+});
+
+app.get('/', auth.requireAuthPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+app.get('/index.html', auth.requireAuthPage, (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+app.use('/api', auth.requireAuthApi);
 
 // ===== STATUS =====
 

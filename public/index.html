@@ -279,6 +279,8 @@
     <div class="dot" id="status-dot"></div>
     <span id="status-text">Verificando...</span>
     <button id="reconnect-btn" onclick="reconnectWhatsApp()" style="display:none;margin-left:8px;padding:4px 10px;font-size:0.78rem;background:var(--orange);color:#fff;border:none;border-radius:12px;cursor:pointer;font-weight:600;">↺ Reconectar</button>
+    <span id="header-username" style="margin-left:10px;font-size:0.78rem;font-weight:600;"></span>
+    <button onclick="logout()" style="margin-left:6px;padding:4px 10px;font-size:0.78rem;background:none;border:1.5px solid rgba(0,0,0,0.3);border-radius:12px;cursor:pointer;font-weight:600;">Sair</button>
   </div>
 </header>
 
@@ -1501,6 +1503,32 @@
 </div>
 
 <script>
+// ===== AUTENTICAÇÃO =====
+// Se a sessão expirar/for invalidada enquanto o painel está aberto, qualquer
+// chamada à API vai voltar 401 — intercepta isso globalmente e manda pro login,
+// em vez de deixar cada uma das dezenas de chamadas fetch espalhadas pelo
+// código tratar isso individualmente.
+const _origFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await _origFetch(...args);
+  if (res.status === 401) window.location.href = '/login.html';
+  return res;
+};
+
+async function logout() {
+  try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (_) {}
+  window.location.href = '/login.html';
+}
+
+async function loadCurrentUser() {
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+    document.getElementById('header-username').textContent = data.username ? `👤 ${data.username}` : '';
+  } catch (_) {}
+}
+document.addEventListener('DOMContentLoaded', loadCurrentUser);
+
 // ===== ESTADO GLOBAL =====
 let allGroups = [];
 let groupOpenFilter = 'all';

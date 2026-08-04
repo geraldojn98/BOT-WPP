@@ -1,6 +1,8 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 
 const DATA_DIR = path.join(__dirname, '../data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -54,6 +56,20 @@ function initSchema() {
       level TEXT NOT NULL,
       category TEXT NOT NULL,
       message TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -131,6 +147,47 @@ try {
     });
   }
 } catch (_) { /* já migrado ou erro não-crítico */ }
+
+// Migração única: se ainda não existe nenhum usuário, cria um a partir de
+// PANEL_USER/PANEL_PASS (as credenciais do login antigo por HTTP Basic Auth) —
+// assim quem já usava o painel continua entrando com o mesmo usuário/senha
+// no novo sistema de login, sem precisar recriar nada.
+try {
+  const hasUsers = db.prepare('SELECT COUNT(*) as c FROM users').get().c > 0;
+  if (!hasUsers && process.env.PANEL_USER && process.env.PANEL_PASS) {
+    const hash = bcrypt.hashSync(process.env.PANEL_PASS, 10);
+    db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(process.env.PANEL_USER, hash);
+    console.log(`[Auth] Usuário "${process.env.PANEL_USER}" criado a partir de PANEL_USER/PANEL_PASS.`);
+  }
+} catch (_) { /* já migrado ou erro não-crítico */ }
+
+// ===== USUÁRIOS E SESSÕES (login) =====
+function createUser(username, passwordHash) {
+  return db.prepare('INSERT INTO users (username, password_hash) VALUES (?, ?)').run(username, passwordHash);
+}
+function getUserByUsername(username) {
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+}
+function getUserById(id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+}
+function createSession(userId, days = 30) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, userId, expiresAt);
+  return token;
+}
+function getSessionUser(token) {
+  if (!token) return null;
+  const row = db.prepare(`
+    SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
+    WHERE s.token = ? AND s.expires_at > datetime('now')
+  `).get(token);
+  return row || null;
+}
+function deleteSession(token) {
+  return db.prepare('DELETE FROM sessions WHERE token = ?').run(token);
+}
 
 // ===== PRODUTOS =====
 function getAllProducts() {
@@ -940,6 +997,7 @@ module.exports = {
   addLog, getLogs, clearLogs,
   getPostsTodayForProfile, getAllPostProfiles, getActivePostProfiles, getPostProfileById,
   addPostProfile, updatePostProfile, deletePostProfile, togglePostProfile,
+  createUser, getUserByUsername, getUserById, createSession, getSessionUser, deleteSession,
   getSetting, setSetting, getAllSettings,
   isBlocked, unblockProduct,
   getAllScheduledMessages, getScheduledMessageById, addScheduledMessage, updateScheduledMessage,
