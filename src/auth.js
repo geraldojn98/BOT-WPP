@@ -63,12 +63,15 @@ function clearSessionCookie(res) {
 }
 
 // Middleware pras rotas /api/* — exige sessão válida, responde 401 se não tiver.
+// Anexa req.userDb (banco isolado desse usuário) além de req.userId — as rotas
+// usam req.userDb.* em vez do antigo db.* global, e nunca enxergam dado de outro usuário.
 function requireAuthApi(req, res, next) {
   const token = req.cookies?.[COOKIE_NAME];
   const user = db.getSessionUser(token);
   if (!user) return res.status(401).json({ error: 'Não autenticado.' });
   req.userId = user.id;
   req.username = user.username;
+  req.userDb = db.getUserDb(user.id);
   next();
 }
 

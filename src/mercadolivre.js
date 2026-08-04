@@ -151,7 +151,7 @@ async function generateAffiliateLink(url) {
  * Busca produtos em promoção via scraping da página de ofertas do ML
  * (contorna restrições da API de busca)
  */
-async function fetchPromoProducts({ minDiscount = 20, limit = 50, keywords = '', priceMin = null, priceMax = null, excludeIds = new Set() } = {}) {
+async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywords = '', priceMin = null, priceMax = null, excludeIds = new Set() } = {}) {
   const tag = process.env.ML_AFFILIATE_TAG || '';
   const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0';
 
@@ -298,7 +298,7 @@ async function fetchPromoProducts({ minDiscount = 20, limit = 50, keywords = '',
     console.log(`[ML] ⚠️ ${reason} (${p.ml_id}) — usando dados da raspagem de /ofertas.`);
     const sep = p.url.includes('?') ? '&' : '?';
     const fallbackUrl = tag ? `${p.url}${sep}matt_tool=painel-afiliados&matt_word=${tag}&matt_source=bot_whatsapp` : p.url;
-    const meliLink = await generateMeliLink(p.url).catch(() => null);
+    const meliLink = await generateMeliLink(userId, p.url).catch(() => null);
     return {
       ml_id: p.ml_id,
       title: p.title,
@@ -376,7 +376,7 @@ async function fetchPromoProducts({ minDiscount = 20, limit = 50, keywords = '',
       const productUrl = (ogUrl && ogUrl.includes('mercadolivre')) ? ogUrl : p.url;
       const sep = productUrl.includes('?') ? '&' : '?';
       const fallbackUrl = tag ? `${productUrl}${sep}matt_tool=painel-afiliados&matt_word=${tag}&matt_source=bot_whatsapp` : productUrl;
-      const meliLink = await generateMeliLink(productUrl);
+      const meliLink = await generateMeliLink(userId, productUrl);
 
       console.log(`[ML] ✅ ${ogTitle.slice(0,40)} | ${realDiscount}% | img:${ogImage?'✅':'❌'} | ${(meliLink||fallbackUrl).slice(0,35)}`);
       return {

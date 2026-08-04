@@ -1,6 +1,5 @@
 const crypto = require('crypto');
 const axios = require('axios');
-const db = require('./database');
 
 const GRAPH_VERSION = 'v21.0';
 
@@ -67,7 +66,11 @@ async function sendPrivateReply(commentId, text) {
   return res.data;
 }
 
-async function handleCommentWebhookEvent(payload, resolveGroupLink, io) {
+// userDb: banco do usuário dono da integração Instagram — como a configuração
+// (INSTAGRAM_PAGE_ID etc.) ainda é global via variáveis de ambiente, não por
+// usuário, a automação de Instagram continua vinculada a um usuário só (quem
+// chama resolve isso, normalmente o usuário criado a partir de PANEL_USER).
+async function handleCommentWebhookEvent(userDb, payload, resolveGroupLink, io) {
   const entries = payload?.entry || [];
   for (const entry of entries) {
     const changes = entry.changes || [];
@@ -78,10 +81,10 @@ async function handleCommentWebhookEvent(payload, resolveGroupLink, io) {
       const text = value.text || '';
       const mediaId = value.media?.id || '';
       if (!commentId) continue;
-      if (db.wasCommentAlreadyReplied(commentId)) continue;
+      if (userDb.wasCommentAlreadyReplied(commentId)) continue;
 
       try {
-        await processComment({ commentId, text, mediaId }, resolveGroupLink, io);
+        await processComment(userDb, { commentId, text, mediaId }, resolveGroupLink, io);
       } catch (err) {
         console.error('[Instagram] Erro ao processar comentário:', err.message);
       }
@@ -89,8 +92,8 @@ async function handleCommentWebhookEvent(payload, resolveGroupLink, io) {
   }
 }
 
-async function processComment({ commentId, text, mediaId }, resolveGroupLink, io) {
-  const rules = db.getActiveInstagramCommentRules();
+async function processComment(userDb, { commentId, text, mediaId }, resolveGroupLink, io) {
+  const rules = userDb.getActiveInstagramCommentRules();
   for (const rule of rules) {
     if (rule.media_id && rule.media_id !== mediaId) continue;
     if (!matchesCommentRule(rule, text)) continue;
@@ -107,7 +110,7 @@ async function processComment({ commentId, text, mediaId }, resolveGroupLink, io
     if (!replyText.trim()) continue;
 
     await sendPrivateReply(commentId, replyText.trim());
-    db.logCommentReplied(commentId, rule.id);
+    userDb.logCommentReplied(commentId, rule.id);
     console.log(`[Instagram] ✅ Regra "${rule.name}" respondeu ao comentário ${commentId}`);
     if (io) io.emit('instagram_reply_sent', { rule: rule.name, commentId });
     break; // uma resposta por comentário — a própria Meta só permite isso mesmo

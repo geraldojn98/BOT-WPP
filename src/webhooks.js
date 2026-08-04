@@ -6,8 +6,10 @@ function signPayload(secret, bodyString) {
   return crypto.createHmac('sha256', secret).update(bodyString).digest('hex');
 }
 
-async function dispatchEvent(eventName, payload) {
-  const subs = db.getAllWebhookSubscriptions().filter(s => s.active && s.event === eventName);
+// userDb: banco do usuário dono das assinaturas (db.getUserDb(userId)) — cada
+// usuário só recebe notificação das próprias assinaturas de webhook.
+async function dispatchEvent(userDb, eventName, payload) {
+  const subs = userDb.getAllWebhookSubscriptions().filter(s => s.active && s.event === eventName);
   if (!subs.length) return;
 
   const bodyString = JSON.stringify({ event: eventName, data: payload, sentAt: new Date().toISOString() });
@@ -23,13 +25,15 @@ async function dispatchEvent(eventName, payload) {
         },
         timeout: 10000,
       });
-      db.logWebhookTrigger(sub.id, `ok:${res.status}`);
+      userDb.logWebhookTrigger(sub.id, `ok:${res.status}`);
     } catch (err) {
-      db.logWebhookTrigger(sub.id, `fail:${err.code || err.message}`);
+      userDb.logWebhookTrigger(sub.id, `fail:${err.code || err.message}`);
     }
   }));
 }
 
+// Tokens de entrada são globais (precisam ser buscáveis só pelo valor do token,
+// antes de saber de qual usuário é) — retorna { id, user_id, name, token, active }.
 function verifyInboundToken(token) {
   if (!token) return null;
   const rec = db.getWebhookTokenByValue(token);
@@ -37,7 +41,7 @@ function verifyInboundToken(token) {
   return rec;
 }
 
-async function testSubscription(sub) {
+async function testSubscription(userDb, sub) {
   const bodyString = JSON.stringify({ event: sub.event, data: { test: true }, sentAt: new Date().toISOString() });
   try {
     const signature = signPayload(sub.secret, bodyString);
@@ -49,11 +53,11 @@ async function testSubscription(sub) {
       },
       timeout: 10000,
     });
-    db.logWebhookTrigger(sub.id, `ok:${res.status}`);
+    userDb.logWebhookTrigger(sub.id, `ok:${res.status}`);
     return { ok: true, status: res.status };
   } catch (err) {
     const statusText = `fail:${err.code || err.message}`;
-    db.logWebhookTrigger(sub.id, statusText);
+    userDb.logWebhookTrigger(sub.id, statusText);
     return { ok: false, error: err.message };
   }
 }
