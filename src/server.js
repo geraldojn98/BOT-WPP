@@ -51,7 +51,9 @@ try {
   });
 } catch {}
 
-app.use(express.json({ verify: (req, res, buf) => { req.rawBody = buf; } }));
+// limit maior que o padrão (100kb) porque imagens enviadas do dispositivo (produtos,
+// campanhas, mensagem própria dos perfis) viajam como data URL em base64 no corpo do JSON.
+app.use(express.json({ limit: '15mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 app.use(cookieParser());
 
 // ===== WEBHOOK DE ENTRADA (sistemas externos → WhatsApp) =====
