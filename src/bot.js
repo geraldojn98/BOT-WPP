@@ -270,35 +270,48 @@ function productOriginLabel(fallback, isNew) {
   return isNew ? 'produto novo (encontrado agora no Mercado Livre)' : 'produto já cadastrado (encontrado de novo no Mercado Livre)';
 }
 
-// Gera o texto de uma "mensagem própria" (perfil em modo divulgação): texto fixo
-// escrito pelo usuário, ou gerado pela IA a partir do prompt configurado no perfil.
-async function buildCustomMessage(profile) {
-  let text;
-  if (profile.custom_message_type === 'ai') {
-    const now = new Date();
-    text = await generateCustomMessage(profile.custom_ai_prompt || '', {
-      date: now.toLocaleDateString('pt-BR'),
-      dayName: DAY_NAMES[now.getDay()],
-    });
-  } else {
-    text = profile.custom_message_text || '';
-  }
-  return { text: (text || '').trim(), imageUrl: profile.custom_image_url || null };
-}
-
 // Envia a mensagem própria de um perfil (divulgação/link/imagem) pros grupos selecionados.
 // Quando há mais de um grupo, aplica um delay aleatório entre os envios pra não parecer
 // um disparo em massa (risco de banimento por comportamento de spam) — ver aviso no painel.
+//
+// Modo IA: gera uma versão diferente do texto pra CADA grupo (uma chamada por grupo, em vez
+// de gerar uma vez só e repetir) — evita mandar o texto idêntico pra dezenas de grupos, o que
+// além de parecer genérico é outro padrão fácil de identificar como spam. Modo manual continua
+// reaproveitando sempre o mesmo texto, já que foi o usuário quem escreveu — não tem o que variar.
 async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
-  const t = getTenant(userId);
-  const { text, imageUrl } = await buildCustomMessage(profile);
-  if (!text && !imageUrl) {
+  const isAi = profile.custom_message_type === 'ai';
+  const imageUrl = profile.custom_image_url || null;
+
+  if (isAi && !(profile.custom_ai_prompt || '').trim() && !imageUrl) {
+    userDb.addLog('warning', 'post', `${tag} Post cancelado: prompt da IA está vazio.`);
+    throw Object.assign(new Error('Prompt da IA está vazio.'), { __logged: true });
+  }
+  if (!isAi && !(profile.custom_message_text || '').trim() && !imageUrl) {
     userDb.addLog('warning', 'post', `${tag} Post cancelado: mensagem própria deste perfil está vazia.`);
     throw Object.assign(new Error('Mensagem própria deste perfil está vazia.'), { __logged: true });
   }
+
+  let firstText = null;
+  async function textFn() {
+    let text;
+    if (isAi) {
+      const now = new Date();
+      text = await generateCustomMessage(profile.custom_ai_prompt || '', {
+        date: now.toLocaleDateString('pt-BR'),
+        dayName: DAY_NAMES[now.getDay()],
+      });
+    } else {
+      text = profile.custom_message_text || '';
+    }
+    text = (text || '').trim();
+    if (firstText === null) firstText = text;
+    return text;
+  }
+
   const delayMsRange = groupIds.length > 1 ? [15000, 45000] : null;
-  const { sent, failed, skipped } = await sendToGroups(userId, groupIds, text, imageUrl, { delayMsRange });
-  userDb.addPostHistory(null, text, 'sent', null, profile.id);
+  const { sent, failed, skipped } = await sendToGroups(userId, groupIds, null, imageUrl, { delayMsRange, textFn });
+  const text = firstText || (isAi ? '(a IA não gerou nenhuma versão com sucesso)' : '');
+  userDb.addPostHistory(null, isAi ? `${text}${sent.length > 1 ? ' (+ outras versões geradas pela IA pros demais grupos)' : ''}` : text, 'sent', null, profile.id);
   emitToUser(io, userId, 'post_sent', { profile: profile.name, product: null, text, groups: sent.length, failed: failed.length, skipped: skipped.length });
 
   if (!sent.length) {
@@ -524,6 +537,12 @@ async function waitForReconnect(userId, maxWaitMs) {
  * pra não disparar em rajada pra muitos grupos de uma vez, o que é um padrão fácil de
  * identificar como spam e aumenta risco de banimento.
  *
+ * opts.textFn = async (groupId, index) => string: quando informado, gera o texto de novo
+ * pra cada grupo (em vez de reaproveitar o parâmetro `text` fixo) — usado no modo IA das
+ * mensagens de divulgação, pra cada grupo receber uma versão diferente da mensagem em vez
+ * do texto idêntico repetido. Se a geração falhar pra um grupo específico, esse grupo entra
+ * como falha (com o motivo) e o envio segue normalmente pros próximos.
+ *
  * Recebe userId (não o client direto) porque, num envio pra muitos grupos, a conexão pode
  * cair no meio (o WhatsApp às vezes derruba sessões em rajadas de mensagens) — quando isso
  * acontece, espera até 1 minuto pela reconexão automática (já existente no bot) antes de
@@ -532,7 +551,7 @@ async function waitForReconnect(userId, maxWaitMs) {
  * cascata só porque estava reaproveitando um client antigo/morto.
  */
 async function sendToGroups(userId, groupIds, text, imageUrl, opts = {}) {
-  const { delayMsRange } = opts;
+  const { delayMsRange, textFn } = opts;
   const sent = [];
   const failed = [];
   const skipped = [];
@@ -549,15 +568,29 @@ async function sendToGroups(userId, groupIds, text, imageUrl, opts = {}) {
       }
       console.log('[Bot] Conexão restabelecida, retomando o envio.');
     }
-    try {
-      const result = await sendPost(getTenant(userId).client, gid, text, imageUrl);
-      const msgId = result?.key?.id || null;
-      console.log(`[Bot] ✅ Enviado para ${gid}${msgId ? ` (msg id: ${msgId})` : ' — ⚠️ sem ID de mensagem retornado, confirme se chegou de verdade no grupo'}`);
-      sent.push(gid);
-    } catch (err) {
-      console.error(`[Bot] ❌ Falha ao enviar para ${gid}: ${err.message}`);
-      failed.push({ gid, error: err.message });
+
+    let msgText = text;
+    let genError = null;
+    if (textFn) {
+      try { msgText = await textFn(gid, i); }
+      catch (err) { genError = err; }
     }
+
+    if (genError) {
+      console.error(`[Bot] ❌ Falha ao gerar mensagem pra ${gid}: ${genError.message}`);
+      failed.push({ gid, error: `Falha ao gerar texto: ${genError.message}` });
+    } else {
+      try {
+        const result = await sendPost(getTenant(userId).client, gid, msgText, imageUrl);
+        const msgId = result?.key?.id || null;
+        console.log(`[Bot] ✅ Enviado para ${gid}${msgId ? ` (msg id: ${msgId})` : ' — ⚠️ sem ID de mensagem retornado, confirme se chegou de verdade no grupo'}`);
+        sent.push(gid);
+      } catch (err) {
+        console.error(`[Bot] ❌ Falha ao enviar para ${gid}: ${err.message}`);
+        failed.push({ gid, error: err.message });
+      }
+    }
+
     if (delayMsRange && i < groupIds.length - 1) {
       const [min, max] = delayMsRange;
       const wait = min + Math.floor(Math.random() * Math.max(1, max - min));
