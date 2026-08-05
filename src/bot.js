@@ -297,20 +297,23 @@ async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
     throw Object.assign(new Error('Mensagem própria deste perfil está vazia.'), { __logged: true });
   }
   const delayMsRange = groupIds.length > 1 ? [15000, 45000] : null;
-  const { sent, failed } = await sendToGroups(t.client, groupIds, text, imageUrl, { delayMsRange });
+  const { sent, failed, skipped } = await sendToGroups(userId, groupIds, text, imageUrl, { delayMsRange });
   userDb.addPostHistory(null, text, 'sent', null, profile.id);
-  emitToUser(io, userId, 'post_sent', { profile: profile.name, product: null, text, groups: sent.length, failed: failed.length });
+  emitToUser(io, userId, 'post_sent', { profile: profile.name, product: null, text, groups: sent.length, failed: failed.length, skipped: skipped.length });
 
   if (!sent.length) {
-    userDb.addLog('error', 'post', `${tag} Mensagem própria não foi enviada a nenhum grupo (falhou em todos os ${failed.length}).`);
+    userDb.addLog('error', 'post', `${tag} Mensagem própria não foi enviada a nenhum grupo (falhou em todos os ${failed.length}${skipped.length ? `, ${skipped.length} não tentados por queda de conexão` : ''}).`);
     throw Object.assign(new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`), { __logged: true });
   }
   if (failed.length) {
     console.error(`[Post] ${tag} ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
     userDb.addLog('warning', 'post', `${tag} Mensagem própria falhou em ${failed.length}/${groupIds.length} grupo(s).`);
   }
+  if (skipped.length) {
+    userDb.addLog('warning', 'post', `${tag} Conexão caiu durante o envio e não voltou a tempo — ${skipped.length} grupo(s) não foram tentados (pode postar de novo pra completar).`);
+  }
   userDb.addLog('info', 'post', `${tag} Mensagem própria enviada para ${sent.length} grupo(s).`);
-  return { sent, failed, text };
+  return { sent, failed, skipped, text };
 }
 
 async function runPost(userId, profile, io) {
@@ -385,7 +388,7 @@ async function runPost(userId, profile, io) {
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
 
-    const { sent, failed } = await sendToGroups(t.client, groupIds, finalText, product.image_url);
+    const { sent, failed } = await sendToGroups(userId, groupIds, finalText, product.image_url);
     if (failed.length) {
       console.error(`[Post] ${tag} ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
       userDb.addLog('warning', 'post', `${tag} "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
@@ -418,7 +421,7 @@ async function sendManualPost(userId, productId, profileId, io) {
   const finalText = `${link}\n\n${text}`;
 
   const tag = `[Perfil "${profile.name}"] [manual - Produtos]`;
-  const { sent, failed } = await sendToGroups(t.client, groupIds, finalText, product.image_url);
+  const { sent, failed } = await sendToGroups(userId, groupIds, finalText, product.image_url);
   userDb.addPostHistory(product.id, finalText, 'manual', product.ml_id || null, profile.id);
   if (!sent.length) {
     userDb.addLog('error', 'post', `${tag} "${product.title}" não foi enviado a nenhum grupo (falhou em todos os ${failed.length}). produto já cadastrado (selecionado manualmente na aba Produtos).`);
@@ -498,6 +501,19 @@ async function sendPost(client, jid, text, imageUrl) {
   return client.sendMessage(jid, { text });
 }
 
+// Espera a conexão voltar sozinha (o handler de connection.update já dispara
+// initWhatsApp de novo automaticamente em quedas comuns) por até maxWaitMs,
+// checando a cada 3s. Usado no meio de um envio em lote pra não jogar fora o
+// resto da lista só porque o WhatsApp derrubou a conexão a meio do caminho.
+async function waitForReconnect(userId, maxWaitMs) {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    if (getTenant(userId).botStatus === 'connected') return true;
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+  return getTenant(userId).botStatus === 'connected';
+}
+
 /**
  * Envia a um grupo, isolando falhas de cada destinatário (uma falha não derruba os demais).
  * Loga sucesso/erro por grupo — inclusive o ID da mensagem retornado, pra diagnosticar
@@ -507,15 +523,34 @@ async function sendPost(client, jid, text, imageUrl) {
  * cada envio seguinte (menos o último) — usado nas mensagens de divulgação/mensagem própria
  * pra não disparar em rajada pra muitos grupos de uma vez, o que é um padrão fácil de
  * identificar como spam e aumenta risco de banimento.
+ *
+ * Recebe userId (não o client direto) porque, num envio pra muitos grupos, a conexão pode
+ * cair no meio (o WhatsApp às vezes derruba sessões em rajadas de mensagens) — quando isso
+ * acontece, espera até 1 minuto pela reconexão automática (já existente no bot) antes de
+ * desistir do restante, e usa o client mais recente a cada tentativa (a reconexão troca a
+ * instância). Sem isso, uma queda no meio do caminho fazia todo o resto da lista falhar em
+ * cascata só porque estava reaproveitando um client antigo/morto.
  */
-async function sendToGroups(client, groupIds, text, imageUrl, opts = {}) {
+async function sendToGroups(userId, groupIds, text, imageUrl, opts = {}) {
   const { delayMsRange } = opts;
   const sent = [];
   const failed = [];
+  const skipped = [];
   for (let i = 0; i < groupIds.length; i++) {
     const gid = groupIds[i];
+    const t = getTenant(userId);
+    if (t.botStatus !== 'connected') {
+      console.log(`[Bot] Conexão não está ativa (status: ${t.botStatus}) — aguardando reconexão automática antes de continuar o envio...`);
+      const reconnected = await waitForReconnect(userId, 60000);
+      if (!reconnected) {
+        console.error(`[Bot] Conexão não voltou a tempo. Parando envio — ${groupIds.length - i} grupo(s) não tentados.`);
+        skipped.push(...groupIds.slice(i));
+        break;
+      }
+      console.log('[Bot] Conexão restabelecida, retomando o envio.');
+    }
     try {
-      const result = await sendPost(client, gid, text, imageUrl);
+      const result = await sendPost(getTenant(userId).client, gid, text, imageUrl);
       const msgId = result?.key?.id || null;
       console.log(`[Bot] ✅ Enviado para ${gid}${msgId ? ` (msg id: ${msgId})` : ' — ⚠️ sem ID de mensagem retornado, confirme se chegou de verdade no grupo'}`);
       sent.push(gid);
@@ -529,7 +564,7 @@ async function sendToGroups(client, groupIds, text, imageUrl, opts = {}) {
       await new Promise(resolve => setTimeout(resolve, wait));
     }
   }
-  return { sent, failed };
+  return { sent, failed, skipped };
 }
 
 function reloadCron(userId, io) {
@@ -1008,11 +1043,14 @@ async function runAutoPost(userId, io, profileId) {
     if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
 
     if (profile.content_mode === 'custom') {
-      const { sent, failed, text } = await runCustomBroadcast(userId, userDb, profile, groupIds, io, tag);
+      const { sent, failed, skipped, text } = await runCustomBroadcast(userId, userDb, profile, groupIds, io, tag);
+      const warnParts = [];
+      if (failed.length) warnParts.push(`falhou em ${failed.length}`);
+      if (skipped.length) warnParts.push(`${skipped.length} não tentado(s) (conexão caiu e não voltou a tempo — pode postar de novo pra completar)`);
       return {
         ok: true, profile: profile.name, product: null, text,
-        groupsSent: sent.length, groupsFailed: failed.length, usedFallback: false,
-        warning: failed.length ? `Falhou em ${failed.length} de ${groupIds.length} grupo(s) — veja o log do servidor.` : null,
+        groupsSent: sent.length, groupsFailed: failed.length, groupsSkipped: skipped.length, usedFallback: false,
+        warning: warnParts.length ? `De ${groupIds.length} grupo(s): ${warnParts.join(', ')}.` : null,
       };
     }
 
@@ -1047,7 +1085,7 @@ async function runAutoPost(userId, io, profileId) {
     const link = product.affiliate_url || product.url;
     const finalText = `${link}\n\n${text}`;
 
-    const { sent, failed } = await sendToGroups(t.client, groupIds, finalText, product.image_url);
+    const { sent, failed } = await sendToGroups(userId, groupIds, finalText, product.image_url);
     userDb.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
     emitToUser(io, userId, 'post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback, isNew });
 
@@ -1175,7 +1213,7 @@ async function checkScheduledMessages(userId, io) {
         continue;
       }
 
-      const { failed } = await sendToGroups(t.client, groupIds, text.trim(), null);
+      const { failed } = await sendToGroups(userId, groupIds, text.trim(), null);
       if (failed.length) {
         console.error(`[ScheduledMsg] ⚠️ "${msg.name}" falhou em ${failed.length}/${groupIds.length} grupo(s)`);
         userDb.addLog('warning', 'scheduled_message', `Mensagem agendada "${msg.name}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
@@ -1195,7 +1233,7 @@ async function broadcastToGroups(userId, text, groupIds) {
   if (t.botStatus !== 'connected') throw new Error('WhatsApp não está conectado.');
   if (!text?.trim()) throw new Error('Mensagem não pode estar vazia.');
   if (!groupIds?.length) throw new Error('Nenhum grupo selecionado.');
-  const { sent, failed } = await sendToGroups(t.client, groupIds, text.trim(), null);
+  const { sent, failed } = await sendToGroups(userId, groupIds, text.trim(), null);
   if (!sent.length) throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);
   return { ok: true, groups: sent.length, failed: failed.length };
 }
@@ -1208,7 +1246,7 @@ async function broadcastMessage(userId, text, io) {
   // Broadcast manual alcança todos os grupos de todos os perfis ativos (não é por perfil).
   const groupIds = [...new Set(userDb.getActivePostProfiles().flatMap(p => resolveProfileGroupIds(userDb, p)))];
   if (!groupIds.length) throw new Error('Nenhum grupo configurado.');
-  const { sent, failed } = await sendToGroups(t.client, groupIds, text.trim(), null);
+  const { sent, failed } = await sendToGroups(userId, groupIds, text.trim(), null);
   if (!sent.length) throw new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`);
   return { ok: true, groups: sent.length, failed: failed.length };
 }

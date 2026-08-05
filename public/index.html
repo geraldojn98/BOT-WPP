@@ -3136,6 +3136,7 @@ async function postProfileNow(id) {
     toast(data.product
       ? `✅ Postado "${data.product}" em ${data.groupsSent} grupo(s)!${data.usedFallback ? ' (produto de fallback)' : ''}`
       : `✅ Mensagem enviada para ${data.groupsSent} grupo(s)!`);
+    if (data.warning) setTimeout(() => toast('⚠️ ' + data.warning, 'err'), 1200);
   } catch (err) {
     toast('❌ Erro ao postar: ' + err.message, 'err');
   }
