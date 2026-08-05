@@ -207,6 +207,10 @@ function startCron(userId, io) {
           const lastMs = new Date(lastAt.replace(' ', 'T') + 'Z').getTime();
           const elapsedHours = (Date.now() - lastMs) / 3600000;
           if (elapsedHours < intervalHours) continue;
+        } else if (profile.interval_first_time) {
+          // Nunca postou ainda e o perfil tem um horário escolhido pra primeira postagem
+          // (em vez de "imediatamente") — só dispara quando bater esse horário.
+          if (currentTime !== profile.interval_first_time) continue;
         }
         console.log(`[Cron] (usuário ${userId}) ⏱️ intervalo de ${intervalHours}h atingido — executando post do perfil "${profile.name}"...`);
         await runPost(userId, profile, io);

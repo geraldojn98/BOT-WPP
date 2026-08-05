@@ -298,6 +298,7 @@ function createUserDb(userId) {
     "ALTER TABLE post_profiles ADD COLUMN custom_image_url TEXT DEFAULT ''",
     "ALTER TABLE post_profiles ADD COLUMN schedule_mode TEXT DEFAULT 'fixed'",
     "ALTER TABLE post_profiles ADD COLUMN interval_hours INTEGER DEFAULT 12",
+    "ALTER TABLE post_profiles ADD COLUMN interval_first_time TEXT DEFAULT ''",
   ]) {
     try { db.exec(stmt); } catch (_) { /* coluna já existe */ }
   }
@@ -457,11 +458,11 @@ function createUserDb(userId) {
     return db.prepare(`
       INSERT INTO post_profiles (
         name, group_ids, series_ids, post_times, post_days, min_discount, search_keywords, price_min, price_max, max_posts_per_day, claude_prompt, active,
-        content_mode, custom_message_type, custom_message_text, custom_ai_prompt, custom_image_url, schedule_mode, interval_hours
+        content_mode, custom_message_type, custom_message_text, custom_ai_prompt, custom_image_url, schedule_mode, interval_hours, interval_first_time
       )
       VALUES (
         @name, @group_ids, @series_ids, @post_times, @post_days, @min_discount, @search_keywords, @price_min, @price_max, @max_posts_per_day, @claude_prompt, @active,
-        @content_mode, @custom_message_type, @custom_message_text, @custom_ai_prompt, @custom_image_url, @schedule_mode, @interval_hours
+        @content_mode, @custom_message_type, @custom_message_text, @custom_ai_prompt, @custom_image_url, @schedule_mode, @interval_hours, @interval_first_time
       )
     `).run({
       name: profile.name,
@@ -483,6 +484,7 @@ function createUserDb(userId) {
       custom_image_url: profile.custom_image_url || '',
       schedule_mode: profile.schedule_mode === 'interval' ? 'interval' : 'fixed',
       interval_hours: parseInt(profile.interval_hours) || 12,
+      interval_first_time: profile.interval_first_time || '',
     });
   }
   function updatePostProfile(id, profile) {
@@ -496,6 +498,7 @@ function createUserDb(userId) {
         content_mode = @content_mode, custom_message_type = @custom_message_type,
         custom_message_text = @custom_message_text, custom_ai_prompt = @custom_ai_prompt,
         custom_image_url = @custom_image_url, schedule_mode = @schedule_mode, interval_hours = @interval_hours,
+        interval_first_time = @interval_first_time,
         updated_at = datetime('now')
       WHERE id = @id
     `).run({
@@ -518,6 +521,7 @@ function createUserDb(userId) {
       custom_image_url: profile.custom_image_url || '',
       schedule_mode: profile.schedule_mode === 'interval' ? 'interval' : 'fixed',
       interval_hours: parseInt(profile.interval_hours) || 12,
+      interval_first_time: profile.interval_first_time || '',
     });
   }
   function deletePostProfile(id) {

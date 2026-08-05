@@ -1170,8 +1170,20 @@
         </div>
         <div class="form-group">
           <div class="form-label">Imagem <span class="badge-opt">Opcional</span></div>
-          <div class="form-desc">Cole o link direto de uma imagem (ex: capa/banner de divulgação). Deixe vazio pra mandar só texto.</div>
-          <input type="text" id="pp-custom-image" placeholder="https://..." />
+          <div class="form-desc">Envie uma foto ou cole o link da imagem (ex: capa/banner de divulgação). Deixe vazio pra mandar só texto.</div>
+          <div id="pp-custom-img-tabs" style="display:flex;gap:6px;margin-bottom:10px;">
+            <button type="button" class="btn btn-primary btn-sm" id="pp-custom-img-tab-file" onclick="switchImgTab('pp-custom','file')">📁 Enviar arquivo</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="pp-custom-img-tab-url" onclick="switchImgTab('pp-custom','url')">🔗 Usar URL</button>
+          </div>
+          <div id="pp-custom-img-file-area">
+            <input type="file" id="pp-custom-img-file" accept="image/*" onchange="handleImgFile('pp-custom')" style="width:100%;padding:8px;border:1.5px dashed var(--border);border-radius:8px;background:#fafafa;cursor:pointer;" />
+            <div id="pp-custom-img-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+          </div>
+          <div id="pp-custom-img-url-area" style="display:none;">
+            <input type="url" id="pp-custom-img-url" placeholder="https://..." oninput="previewImgUrl('pp-custom')" />
+            <div id="pp-custom-img-url-preview" style="display:none;margin-top:8px;text-align:center;"></div>
+          </div>
+          <input type="hidden" id="pp-custom-img-value" />
         </div>
       </div>
 
@@ -1255,6 +1267,18 @@
         <div class="form-label">A cada quantas horas postar?</div>
         <div class="form-desc">Ex: 12 = posta a cada 12 horas, contando a partir do último post deste perfil. O filtro de "dias da semana" acima continua valendo.</div>
         <input type="number" id="pp-interval-hours" min="1" max="168" value="12" />
+
+        <div class="form-label" style="margin-top:14px;">Horário da primeira postagem</div>
+        <div class="form-desc">Depois da primeira vez, os próximos posts seguem só o intervalo acima.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-interval-first-mode" value="now" checked onchange="updatePpIntervalFirstMode()" style="width:auto;"> ▶️ Imediatamente
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-interval-first-mode" value="time" onchange="updatePpIntervalFirstMode()" style="width:auto;"> 🕐 Em um horário específico
+          </label>
+        </div>
+        <input type="time" id="pp-interval-first-time" value="09:00" style="display:none;" />
       </div>
 
       <div class="modal-actions">
@@ -2954,6 +2978,11 @@ function updatePpScheduleMode() {
   document.getElementById('pp-schedule-interval-area').style.display = mode === 'interval' ? 'block' : 'none';
 }
 
+function updatePpIntervalFirstMode() {
+  const mode = document.querySelector('input[name="pp-interval-first-mode"]:checked').value;
+  document.getElementById('pp-interval-first-time').style.display = mode === 'time' ? 'block' : 'none';
+}
+
 async function openNewPostProfile() {
   document.getElementById('postprofile-modal-title').textContent = '🗂️ Novo perfil de postagem';
   document.getElementById('pp-id').value = '';
@@ -2967,13 +2996,16 @@ async function openNewPostProfile() {
   document.querySelector('input[name="pp-content-mode"][value="products"]').checked = true;
   document.querySelector('input[name="pp-custom-type"][value="manual"]').checked = true;
   document.querySelector('input[name="pp-schedule-mode"][value="fixed"]').checked = true;
+  document.querySelector('input[name="pp-interval-first-mode"][value="now"]').checked = true;
   document.getElementById('pp-custom-message').value = '';
   document.getElementById('pp-custom-ai-prompt').value = '';
-  document.getElementById('pp-custom-image').value = '';
+  resetImgWidget('pp-custom');
   document.getElementById('pp-interval-hours').value = '12';
+  document.getElementById('pp-interval-first-time').value = '09:00';
   updatePpContentMode();
   updatePpCustomType();
   updatePpScheduleMode();
+  updatePpIntervalFirstMode();
   document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => b.classList.add('active'));
   setPpTimePreset('09:00,12:00,18:00');
   await Promise.all([loadPpGroupSelector(), loadPpSeriesSelector()]);
@@ -2996,12 +3028,27 @@ async function editPostProfile(id) {
   document.querySelector(`input[name="pp-custom-type"][value="${p.custom_message_type === 'ai' ? 'ai' : 'manual'}"]`).checked = true;
   document.getElementById('pp-custom-message').value = p.custom_message_text || '';
   document.getElementById('pp-custom-ai-prompt').value = p.custom_ai_prompt || '';
-  document.getElementById('pp-custom-image').value = p.custom_image_url || '';
+  resetImgWidget('pp-custom');
+  if (p.custom_image_url) {
+    const hidden = document.getElementById('pp-custom-img-value');
+    if (hidden) hidden.value = p.custom_image_url;
+    if (p.custom_image_url.startsWith('data:')) {
+      const prev = document.getElementById('pp-custom-img-preview');
+      if (prev) { prev.style.display = 'block'; prev.innerHTML = `<img src="${p.custom_image_url}" style="max-height:120px;max-width:100%;border-radius:8px;border:2px solid var(--border);" />`; }
+    } else {
+      switchImgTab('pp-custom', 'url');
+      document.getElementById('pp-custom-img-url').value = p.custom_image_url;
+      previewImgUrl('pp-custom');
+    }
+  }
   document.querySelector(`input[name="pp-schedule-mode"][value="${p.schedule_mode === 'interval' ? 'interval' : 'fixed'}"]`).checked = true;
   document.getElementById('pp-interval-hours').value = p.interval_hours || 12;
+  document.querySelector(`input[name="pp-interval-first-mode"][value="${p.interval_first_time ? 'time' : 'now'}"]`).checked = true;
+  document.getElementById('pp-interval-first-time').value = p.interval_first_time || '09:00';
   updatePpContentMode();
   updatePpCustomType();
   updatePpScheduleMode();
+  updatePpIntervalFirstMode();
 
   const days = p.post_days === '*' ? ['0','1','2','3','4','5','6'] : (p.post_days || '').split(',');
   document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => {
@@ -3025,6 +3072,7 @@ async function savePostProfile(e) {
   const contentMode = document.querySelector('input[name="pp-content-mode"]:checked').value;
   const customType = document.querySelector('input[name="pp-custom-type"]:checked').value;
   const scheduleMode = document.querySelector('input[name="pp-schedule-mode"]:checked').value;
+  const intervalFirstMode = document.querySelector('input[name="pp-interval-first-mode"]:checked').value;
 
   const payload = {
     name: document.getElementById('pp-name').value.trim(),
@@ -3042,9 +3090,10 @@ async function savePostProfile(e) {
     custom_message_type: customType,
     custom_message_text: document.getElementById('pp-custom-message').value.trim(),
     custom_ai_prompt: document.getElementById('pp-custom-ai-prompt').value.trim(),
-    custom_image_url: document.getElementById('pp-custom-image').value.trim(),
+    custom_image_url: getImgValue('pp-custom'),
     schedule_mode: scheduleMode,
     interval_hours: document.getElementById('pp-interval-hours').value,
+    interval_first_time: intervalFirstMode === 'time' ? document.getElementById('pp-interval-first-time').value : '',
   };
 
   if (!payload.name) return toast('Nome é obrigatório.', 'err');
