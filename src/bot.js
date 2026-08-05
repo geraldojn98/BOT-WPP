@@ -14,6 +14,7 @@ const webhooks = require('./webhooks');
 // era tudo variável de módulo única (um WhatsApp só pro processo inteiro).
 // =====================================================================
 const tenants = new Map(); // userId -> { client, botStatus, qrCodeData, cronJob, manualDisconnect }
+const DAY_NAMES = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 
 function getTenant(userId) {
   if (!tenants.has(userId)) {
@@ -196,11 +197,24 @@ function startCron(userId, io) {
 
     const profiles = userDb.getActivePostProfiles();
     for (const profile of profiles) {
-      const times = (profile.post_times || '').split(',').map(t2 => t2.trim()).filter(Boolean);
-      const days  = profile.post_days === '*' ? null : (profile.post_days || '').split(',').map(d => d.trim());
-
-      if (!times.includes(currentTime)) continue;
+      const days = profile.post_days === '*' ? null : (profile.post_days || '').split(',').map(d => d.trim());
       if (days && !days.includes(currentDay)) continue;
+
+      if (profile.schedule_mode === 'interval') {
+        const intervalHours = Math.max(1, parseInt(profile.interval_hours) || 12);
+        const lastAt = userDb.getLastPostAtForProfile(profile.id);
+        if (lastAt) {
+          const lastMs = new Date(lastAt.replace(' ', 'T') + 'Z').getTime();
+          const elapsedHours = (Date.now() - lastMs) / 3600000;
+          if (elapsedHours < intervalHours) continue;
+        }
+        console.log(`[Cron] (usuário ${userId}) ⏱️ intervalo de ${intervalHours}h atingido — executando post do perfil "${profile.name}"...`);
+        await runPost(userId, profile, io);
+        continue;
+      }
+
+      const times = (profile.post_times || '').split(',').map(t2 => t2.trim()).filter(Boolean);
+      if (!times.includes(currentTime)) continue;
 
       console.log(`[Cron] (usuário ${userId}) ⏰ ${currentTime} — executando post do perfil "${profile.name}"...`);
       await runPost(userId, profile, io);
@@ -252,6 +266,49 @@ function productOriginLabel(fallback, isNew) {
   return isNew ? 'produto novo (encontrado agora no Mercado Livre)' : 'produto já cadastrado (encontrado de novo no Mercado Livre)';
 }
 
+// Gera o texto de uma "mensagem própria" (perfil em modo divulgação): texto fixo
+// escrito pelo usuário, ou gerado pela IA a partir do prompt configurado no perfil.
+async function buildCustomMessage(profile) {
+  let text;
+  if (profile.custom_message_type === 'ai') {
+    const now = new Date();
+    text = await generateCustomMessage(profile.custom_ai_prompt || '', {
+      date: now.toLocaleDateString('pt-BR'),
+      dayName: DAY_NAMES[now.getDay()],
+    });
+  } else {
+    text = profile.custom_message_text || '';
+  }
+  return { text: (text || '').trim(), imageUrl: profile.custom_image_url || null };
+}
+
+// Envia a mensagem própria de um perfil (divulgação/link/imagem) pros grupos selecionados.
+// Quando há mais de um grupo, aplica um delay aleatório entre os envios pra não parecer
+// um disparo em massa (risco de banimento por comportamento de spam) — ver aviso no painel.
+async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
+  const t = getTenant(userId);
+  const { text, imageUrl } = await buildCustomMessage(profile);
+  if (!text && !imageUrl) {
+    userDb.addLog('warning', 'post', `${tag} Post cancelado: mensagem própria deste perfil está vazia.`);
+    throw Object.assign(new Error('Mensagem própria deste perfil está vazia.'), { __logged: true });
+  }
+  const delayMsRange = groupIds.length > 1 ? [15000, 45000] : null;
+  const { sent, failed } = await sendToGroups(t.client, groupIds, text, imageUrl, { delayMsRange });
+  userDb.addPostHistory(null, text, 'sent', null, profile.id);
+  emitToUser(io, userId, 'post_sent', { profile: profile.name, product: null, text, groups: sent.length, failed: failed.length });
+
+  if (!sent.length) {
+    userDb.addLog('error', 'post', `${tag} Mensagem própria não foi enviada a nenhum grupo (falhou em todos os ${failed.length}).`);
+    throw Object.assign(new Error(`Falha ao enviar para todos os ${failed.length} grupo(s): ${failed[0]?.error}`), { __logged: true });
+  }
+  if (failed.length) {
+    console.error(`[Post] ${tag} ⚠️ Falhou em ${failed.length}/${groupIds.length} grupo(s):`, failed.map(f => f.gid).join(', '));
+    userDb.addLog('warning', 'post', `${tag} Mensagem própria falhou em ${failed.length}/${groupIds.length} grupo(s).`);
+  }
+  userDb.addLog('info', 'post', `${tag} Mensagem própria enviada para ${sent.length} grupo(s).`);
+  return { sent, failed, text };
+}
+
 async function runPost(userId, profile, io) {
   const t = getTenant(userId);
   const userDb = db.getUserDb(userId);
@@ -268,6 +325,11 @@ async function runPost(userId, profile, io) {
     if (!groupIds.length) {
       console.log(`[Post] ${tag} Nenhum grupo configurado.`);
       userDb.addLog('warning', 'post', `${tag} Post cancelado: nenhum grupo configurado para este perfil.`);
+      return;
+    }
+
+    if (profile.content_mode === 'custom') {
+      await runCustomBroadcast(userId, userDb, profile, groupIds, io, tag);
       return;
     }
 
@@ -329,7 +391,7 @@ async function runPost(userId, profile, io) {
     emitToUser(io, userId, 'post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length, fallback, isNew });
   } catch (err) {
     console.error(`[Post] ${tag} Erro ao enviar:`, err.message);
-    userDb.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
+    if (!err.__logged) userDb.addLog('error', 'post', `${tag} Post não enviado: ${err.message}`);
   }
 }
 
@@ -436,11 +498,18 @@ async function sendPost(client, jid, text, imageUrl) {
  * Envia a um grupo, isolando falhas de cada destinatário (uma falha não derruba os demais).
  * Loga sucesso/erro por grupo — inclusive o ID da mensagem retornado, pra diagnosticar
  * casos em que o envio "resolve com sucesso" mas a mensagem não chega de fato.
+ *
+ * opts.delayMsRange = [min, max]: espera um tempo aleatório entre esse intervalo antes de
+ * cada envio seguinte (menos o último) — usado nas mensagens de divulgação/mensagem própria
+ * pra não disparar em rajada pra muitos grupos de uma vez, o que é um padrão fácil de
+ * identificar como spam e aumenta risco de banimento.
  */
-async function sendToGroups(client, groupIds, text, imageUrl) {
+async function sendToGroups(client, groupIds, text, imageUrl, opts = {}) {
+  const { delayMsRange } = opts;
   const sent = [];
   const failed = [];
-  for (const gid of groupIds) {
+  for (let i = 0; i < groupIds.length; i++) {
+    const gid = groupIds[i];
     try {
       const result = await sendPost(client, gid, text, imageUrl);
       const msgId = result?.key?.id || null;
@@ -449,6 +518,11 @@ async function sendToGroups(client, groupIds, text, imageUrl) {
     } catch (err) {
       console.error(`[Bot] ❌ Falha ao enviar para ${gid}: ${err.message}`);
       failed.push({ gid, error: err.message });
+    }
+    if (delayMsRange && i < groupIds.length - 1) {
+      const [min, max] = delayMsRange;
+      const wait = min + Math.floor(Math.random() * Math.max(1, max - min));
+      await new Promise(resolve => setTimeout(resolve, wait));
     }
   }
   return { sent, failed };
@@ -929,6 +1003,15 @@ async function runAutoPost(userId, io, profileId) {
     const groupIds = resolveProfileGroupIds(userDb, profile);
     if (!groupIds.length) throw new Error(`Nenhum grupo configurado no perfil "${profile.name}".`);
 
+    if (profile.content_mode === 'custom') {
+      const { sent, failed, text } = await runCustomBroadcast(userId, userDb, profile, groupIds, io, tag);
+      return {
+        ok: true, profile: profile.name, product: null, text,
+        groupsSent: sent.length, groupsFailed: failed.length, usedFallback: false,
+        warning: failed.length ? `Falhou em ${failed.length} de ${groupIds.length} grupo(s) — veja o log do servidor.` : null,
+      };
+    }
+
     const minDiscount = parseInt(profile.min_discount) || 20;
     const keywords = profile.search_keywords || '';
     const priceMin = profile.price_min || null;
@@ -1016,8 +1099,6 @@ async function disconnectWhatsApp(userId, io) {
   emitToUser(io, userId, 'status', getStatus(userId));
   console.log(`[Bot] (usuário ${userId}) WhatsApp desconectado e sessão removida.`);
 }
-
-const DAY_NAMES = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 
 async function checkScheduledMessages(userId, io) {
   const t = getTenant(userId);

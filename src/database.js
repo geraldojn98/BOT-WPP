@@ -287,6 +287,21 @@ function createUserDb(userId) {
     );
   `);
 
+  // Migração segura: perfis podem postar produtos do ML (padrão) ou uma mensagem própria
+  // de divulgação (escrita à mão ou gerada por IA a partir de um prompt), e podem ser
+  // agendados por dias+horários fixos (padrão) ou por intervalo de horas.
+  for (const stmt of [
+    "ALTER TABLE post_profiles ADD COLUMN content_mode TEXT DEFAULT 'products'",
+    "ALTER TABLE post_profiles ADD COLUMN custom_message_type TEXT DEFAULT 'manual'",
+    "ALTER TABLE post_profiles ADD COLUMN custom_message_text TEXT DEFAULT ''",
+    "ALTER TABLE post_profiles ADD COLUMN custom_ai_prompt TEXT DEFAULT ''",
+    "ALTER TABLE post_profiles ADD COLUMN custom_image_url TEXT DEFAULT ''",
+    "ALTER TABLE post_profiles ADD COLUMN schedule_mode TEXT DEFAULT 'fixed'",
+    "ALTER TABLE post_profiles ADD COLUMN interval_hours INTEGER DEFAULT 12",
+  ]) {
+    try { db.exec(stmt); } catch (_) { /* coluna já existe */ }
+  }
+
   const defaults = [
     ['cron_schedule', '0 9,12,18 * * *'],
     ['bot_timezone', 'America/Sao_Paulo'],
@@ -420,6 +435,10 @@ function createUserDb(userId) {
   function getPostsToday() {
     return db.prepare("SELECT COUNT(*) as count FROM post_history WHERE date(sent_at) = date('now')").get();
   }
+  function getLastPostAtForProfile(profileId) {
+    const row = db.prepare('SELECT MAX(sent_at) as last FROM post_history WHERE profile_id = ?').get(profileId);
+    return row?.last || null;
+  }
   function getPostsTodayForProfile(profileId) {
     return db.prepare("SELECT COUNT(*) as count FROM post_history WHERE profile_id = ? AND date(sent_at) = date('now')").get(profileId);
   }
@@ -436,8 +455,14 @@ function createUserDb(userId) {
   }
   function addPostProfile(profile) {
     return db.prepare(`
-      INSERT INTO post_profiles (name, group_ids, series_ids, post_times, post_days, min_discount, search_keywords, price_min, price_max, max_posts_per_day, claude_prompt, active)
-      VALUES (@name, @group_ids, @series_ids, @post_times, @post_days, @min_discount, @search_keywords, @price_min, @price_max, @max_posts_per_day, @claude_prompt, @active)
+      INSERT INTO post_profiles (
+        name, group_ids, series_ids, post_times, post_days, min_discount, search_keywords, price_min, price_max, max_posts_per_day, claude_prompt, active,
+        content_mode, custom_message_type, custom_message_text, custom_ai_prompt, custom_image_url, schedule_mode, interval_hours
+      )
+      VALUES (
+        @name, @group_ids, @series_ids, @post_times, @post_days, @min_discount, @search_keywords, @price_min, @price_max, @max_posts_per_day, @claude_prompt, @active,
+        @content_mode, @custom_message_type, @custom_message_text, @custom_ai_prompt, @custom_image_url, @schedule_mode, @interval_hours
+      )
     `).run({
       name: profile.name,
       group_ids: profile.group_ids || '',
@@ -451,6 +476,13 @@ function createUserDb(userId) {
       max_posts_per_day: parseInt(profile.max_posts_per_day) || 6,
       claude_prompt: profile.claude_prompt || '',
       active: profile.active === undefined ? 1 : (profile.active ? 1 : 0),
+      content_mode: profile.content_mode === 'custom' ? 'custom' : 'products',
+      custom_message_type: profile.custom_message_type === 'ai' ? 'ai' : 'manual',
+      custom_message_text: profile.custom_message_text || '',
+      custom_ai_prompt: profile.custom_ai_prompt || '',
+      custom_image_url: profile.custom_image_url || '',
+      schedule_mode: profile.schedule_mode === 'interval' ? 'interval' : 'fixed',
+      interval_hours: parseInt(profile.interval_hours) || 12,
     });
   }
   function updatePostProfile(id, profile) {
@@ -461,6 +493,9 @@ function createUserDb(userId) {
         min_discount = @min_discount, search_keywords = @search_keywords,
         price_min = @price_min, price_max = @price_max,
         max_posts_per_day = @max_posts_per_day, claude_prompt = @claude_prompt,
+        content_mode = @content_mode, custom_message_type = @custom_message_type,
+        custom_message_text = @custom_message_text, custom_ai_prompt = @custom_ai_prompt,
+        custom_image_url = @custom_image_url, schedule_mode = @schedule_mode, interval_hours = @interval_hours,
         updated_at = datetime('now')
       WHERE id = @id
     `).run({
@@ -476,6 +511,13 @@ function createUserDb(userId) {
       price_max: profile.price_max || '',
       max_posts_per_day: parseInt(profile.max_posts_per_day) || 6,
       claude_prompt: profile.claude_prompt || '',
+      content_mode: profile.content_mode === 'custom' ? 'custom' : 'products',
+      custom_message_type: profile.custom_message_type === 'ai' ? 'ai' : 'manual',
+      custom_message_text: profile.custom_message_text || '',
+      custom_ai_prompt: profile.custom_ai_prompt || '',
+      custom_image_url: profile.custom_image_url || '',
+      schedule_mode: profile.schedule_mode === 'interval' ? 'interval' : 'fixed',
+      interval_hours: parseInt(profile.interval_hours) || 12,
     });
   }
   function deletePostProfile(id) {
@@ -1121,7 +1163,7 @@ function createUserDb(userId) {
     addProduct, updateProduct, deleteProduct, toggleProduct,
     addPostHistory, getPostHistory, getPostsToday, wasPostedRecently, wasPostedRecentlyByMlId, clearHistory,
     addLog, getLogs, clearLogs,
-    getPostsTodayForProfile, getAllPostProfiles, getActivePostProfiles, getPostProfileById,
+    getPostsTodayForProfile, getLastPostAtForProfile, getAllPostProfiles, getActivePostProfiles, getPostProfileById,
     addPostProfile, updatePostProfile, deletePostProfile, togglePostProfile,
     getSetting, setSetting, getAllSettings,
     isBlocked, unblockProduct,

@@ -1126,24 +1126,116 @@
       </div>
 
       <div class="form-group">
-        <div class="form-label">📅 Dias da semana</div>
-        <div class="day-buttons" id="pp-day-buttons">
-          <button type="button" class="day-btn active" data-ppday="0">Dom</button>
-          <button type="button" class="day-btn active" data-ppday="1">Seg</button>
-          <button type="button" class="day-btn active" data-ppday="2">Ter</button>
-          <button type="button" class="day-btn active" data-ppday="3">Qua</button>
-          <button type="button" class="day-btn active" data-ppday="4">Qui</button>
-          <button type="button" class="day-btn active" data-ppday="5">Sex</button>
-          <button type="button" class="day-btn active" data-ppday="6">Sáb</button>
-        </div>
-        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('all')">✅ Todos os dias</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekdays')">💼 Só dias úteis</button>
-          <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekend')">🎉 Só fim de semana</button>
+        <div class="form-label">📦 O que este perfil vai postar?</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-content-mode" value="products" checked onchange="updatePpContentMode()" style="width:auto;"> 🛒 Produtos do Mercado Livre
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-content-mode" value="custom" onchange="updatePpContentMode()" style="width:auto;"> 📢 Mensagem própria / divulgação
+          </label>
         </div>
       </div>
 
       <div class="form-group">
+        <div class="form-label">Máximo de posts por dia</div>
+        <div class="form-desc">Vale tanto pra produtos quanto pra mensagem própria — limita quantas vezes este perfil dispara por dia.</div>
+        <input type="number" id="pp-max-posts" min="1" value="6" />
+      </div>
+
+      <div id="pp-custom-area" style="display:none;">
+        <div class="hint hint-red" style="font-size:0.82rem;">
+          ⚠️ <strong>Cuidado com banimento:</strong> enviar a mesma mensagem pra muitos grupos com muita frequência é um padrão que o WhatsApp pode identificar como spam. O bot já aplica um intervalo aleatório entre cada grupo quando você seleciona vários de uma vez, pra parecer mais orgânico — mesmo assim, evite postar em excesso e prefira intervalos maiores (a cada várias horas, não a cada poucos minutos).
+        </div>
+        <div class="form-group">
+          <div class="form-label">Quem escreve a mensagem?</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+              <input type="radio" name="pp-custom-type" value="manual" checked onchange="updatePpCustomType()" style="width:auto;"> ✍️ Eu mesmo escrevo
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+              <input type="radio" name="pp-custom-type" value="ai" onchange="updatePpCustomType()" style="width:auto;"> 🤖 IA escreve pra mim
+            </label>
+          </div>
+        </div>
+        <div class="form-group" id="pp-custom-manual-area">
+          <div class="form-label">Mensagem</div>
+          <div class="form-desc">Escreva o texto, cole o link do grupo/divulgação, etc.</div>
+          <textarea id="pp-custom-message" rows="4" placeholder="Ex: Entra no nosso grupo de ofertas! https://chat.whatsapp.com/..."></textarea>
+        </div>
+        <div class="form-group" id="pp-custom-ai-area" style="display:none;">
+          <div class="form-label">O que a IA deve escrever?</div>
+          <div class="form-desc">Descreva o que divulgar — a IA gera um texto diferente a cada envio.</div>
+          <textarea id="pp-custom-ai-prompt" rows="4" placeholder="Ex: Escreva um convite chamativo pro nosso grupo de promoções, com emojis, deixando claro que é grátis pra entrar."></textarea>
+        </div>
+        <div class="form-group">
+          <div class="form-label">Imagem <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Cole o link direto de uma imagem (ex: capa/banner de divulgação). Deixe vazio pra mandar só texto.</div>
+          <input type="text" id="pp-custom-image" placeholder="https://..." />
+        </div>
+      </div>
+
+      <div id="pp-products-fields">
+        <div class="form-group">
+          <div class="form-label">📅 Dias da semana</div>
+          <div class="day-buttons" id="pp-day-buttons">
+            <button type="button" class="day-btn active" data-ppday="0">Dom</button>
+            <button type="button" class="day-btn active" data-ppday="1">Seg</button>
+            <button type="button" class="day-btn active" data-ppday="2">Ter</button>
+            <button type="button" class="day-btn active" data-ppday="3">Qua</button>
+            <button type="button" class="day-btn active" data-ppday="4">Qui</button>
+            <button type="button" class="day-btn active" data-ppday="5">Sex</button>
+            <button type="button" class="day-btn active" data-ppday="6">Sáb</button>
+          </div>
+          <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('all')">✅ Todos os dias</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekdays')">💼 Só dias úteis</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="setPpDays('weekend')">🎉 Só fim de semana</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Palavras-chave <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Separe com vírgula. Deixe vazio pra buscar qualquer produto em promoção.</div>
+          <input type="text" id="pp-keywords" placeholder="Ex: fone bluetooth, tênis, notebook" />
+        </div>
+
+        <div class="input-row">
+          <div class="form-group">
+            <div class="form-label">Preço mínimo (R$) <span class="badge-opt">Opcional</span></div>
+            <input type="number" id="pp-price-min" min="0" step="1" placeholder="Ex: 50" />
+          </div>
+          <div class="form-group">
+            <div class="form-label">Preço máximo (R$) <span class="badge-opt">Opcional</span></div>
+            <input type="number" id="pp-price-max" min="0" step="1" placeholder="Ex: 500" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Desconto mínimo (%) <span class="badge">Obrigatório</span></div>
+          <input type="number" id="pp-min-discount" min="1" max="99" value="20" />
+        </div>
+
+        <div class="form-group">
+          <div class="form-label">Tom de voz da IA para este perfil <span class="badge-opt">Opcional</span></div>
+          <div class="form-desc">Deixe em branco para usar o prompt padrão configurado em ⚙️ Configurações.</div>
+          <textarea id="pp-prompt" rows="3" placeholder="Ex: Escreva em tom premium e elegante, sem gírias, focado em qualidade."></textarea>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <div class="form-label">🗓️ Como agendar os horários?</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-schedule-mode" value="fixed" checked onchange="updatePpScheduleMode()" style="width:auto;"> 📅 Dias + horários fixos
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 14px;border:2px solid var(--border);border-radius:8px;flex:1;">
+            <input type="radio" name="pp-schedule-mode" value="interval" onchange="updatePpScheduleMode()" style="width:auto;"> ⏱️ Intervalo de horas
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group" id="pp-schedule-fixed-area">
         <div class="form-label">⏰ Horários de envio</div>
         <div class="form-desc">Adicione os horários em que este perfil deve postar. Clique no ✕ para remover.</div>
         <div class="times-list" id="pp-times-list"></div>
@@ -1159,38 +1251,10 @@
         </div>
       </div>
 
-      <div class="form-group">
-        <div class="form-label">Palavras-chave <span class="badge-opt">Opcional</span></div>
-        <div class="form-desc">Separe com vírgula. Deixe vazio pra buscar qualquer produto em promoção.</div>
-        <input type="text" id="pp-keywords" placeholder="Ex: fone bluetooth, tênis, notebook" />
-      </div>
-
-      <div class="input-row">
-        <div class="form-group">
-          <div class="form-label">Preço mínimo (R$) <span class="badge-opt">Opcional</span></div>
-          <input type="number" id="pp-price-min" min="0" step="1" placeholder="Ex: 50" />
-        </div>
-        <div class="form-group">
-          <div class="form-label">Preço máximo (R$) <span class="badge-opt">Opcional</span></div>
-          <input type="number" id="pp-price-max" min="0" step="1" placeholder="Ex: 500" />
-        </div>
-      </div>
-
-      <div class="input-row">
-        <div class="form-group">
-          <div class="form-label">Desconto mínimo (%) <span class="badge">Obrigatório</span></div>
-          <input type="number" id="pp-min-discount" min="1" max="99" value="20" required />
-        </div>
-        <div class="form-group">
-          <div class="form-label">Máximo de posts por dia</div>
-          <input type="number" id="pp-max-posts" min="1" value="6" />
-        </div>
-      </div>
-
-      <div class="form-group">
-        <div class="form-label">Tom de voz da IA para este perfil <span class="badge-opt">Opcional</span></div>
-        <div class="form-desc">Deixe em branco para usar o prompt padrão configurado em ⚙️ Configurações.</div>
-        <textarea id="pp-prompt" rows="3" placeholder="Ex: Escreva em tom premium e elegante, sem gírias, focado em qualidade."></textarea>
+      <div class="form-group" id="pp-schedule-interval-area" style="display:none;">
+        <div class="form-label">A cada quantas horas postar?</div>
+        <div class="form-desc">Ex: 12 = posta a cada 12 horas, contando a partir do último post deste perfil. O filtro de "dias da semana" acima continua valendo.</div>
+        <input type="number" id="pp-interval-hours" min="1" max="168" value="12" />
       </div>
 
       <div class="modal-actions">
@@ -2725,6 +2789,10 @@ async function loadPostProfiles() {
     const groupCount = (p.group_ids || '').split(',').filter(Boolean).length;
     const seriesCount = (p.series_ids || '').split(',').filter(Boolean).length;
     const groupsLabel = [groupCount ? `${groupCount} grupo(s)` : null, seriesCount ? `${seriesCount} série(s)` : null].filter(Boolean).join(' + ') || 'nenhum grupo';
+    const scheduleLabel = p.schedule_mode === 'interval' ? `a cada ${p.interval_hours}h` : p.post_times;
+    const contentLabel = p.content_mode === 'custom'
+      ? `📢 Mensagem própria (${p.custom_message_type === 'ai' ? 'IA' : 'escrita por você'})`
+      : `🔍 Desconto mín. ${p.min_discount}% · até ${p.max_posts_per_day}/dia${p.search_keywords ? ' · ' + p.search_keywords.slice(0,50) : ''}`;
     return `
       <div class="sched-msg-card ${p.active ? '' : 'inactive'}">
         <div class="sched-msg-info">
@@ -2732,12 +2800,12 @@ async function loadPostProfiles() {
           <div class="sched-msg-meta">
             <span>📱 ${groupsLabel}</span>
             <span>📅 ${days}</span>
-            <span>⏰ ${p.post_times}</span>
+            <span>${p.schedule_mode === 'interval' ? '⏱️' : '⏰'} ${scheduleLabel}</span>
           </div>
-          <div style="font-size:0.82rem;color:#555;margin-top:6px;">🔍 Desconto mín. ${p.min_discount}% · até ${p.max_posts_per_day}/dia${p.search_keywords ? ' · ' + p.search_keywords.slice(0,50) : ''}</div>
+          <div style="font-size:0.82rem;color:#555;margin-top:6px;">${contentLabel}</div>
         </div>
         <div class="sched-msg-actions">
-          <button class="btn btn-green btn-sm" onclick="postProfileNow(${p.id})" title="Postar agora">🛒</button>
+          <button class="btn btn-green btn-sm" onclick="postProfileNow(${p.id})" title="Postar agora">${p.content_mode === 'custom' ? '📢' : '🛒'}</button>
           <button class="btn btn-ghost btn-sm" onclick="editPostProfile(${p.id})">✏️</button>
           <button class="btn btn-ghost btn-sm" onclick="togglePostProfile(${p.id}, ${p.active ? 0 : 1})">${p.active ? '⏸' : '▶'}</button>
           <button class="btn btn-red btn-sm" onclick="deletePostProfileConfirm(${p.id})">🗑️</button>
@@ -2868,6 +2936,24 @@ function setPpDays(preset) {
   });
 }
 
+function updatePpContentMode() {
+  const mode = document.querySelector('input[name="pp-content-mode"]:checked').value;
+  document.getElementById('pp-custom-area').style.display = mode === 'custom' ? 'block' : 'none';
+  document.getElementById('pp-products-fields').style.display = mode === 'custom' ? 'none' : 'block';
+}
+
+function updatePpCustomType() {
+  const type = document.querySelector('input[name="pp-custom-type"]:checked').value;
+  document.getElementById('pp-custom-manual-area').style.display = type === 'ai' ? 'none' : 'block';
+  document.getElementById('pp-custom-ai-area').style.display = type === 'ai' ? 'block' : 'none';
+}
+
+function updatePpScheduleMode() {
+  const mode = document.querySelector('input[name="pp-schedule-mode"]:checked').value;
+  document.getElementById('pp-schedule-fixed-area').style.display = mode === 'interval' ? 'none' : 'block';
+  document.getElementById('pp-schedule-interval-area').style.display = mode === 'interval' ? 'block' : 'none';
+}
+
 async function openNewPostProfile() {
   document.getElementById('postprofile-modal-title').textContent = '🗂️ Novo perfil de postagem';
   document.getElementById('pp-id').value = '';
@@ -2878,6 +2964,16 @@ async function openNewPostProfile() {
   document.getElementById('pp-min-discount').value = '20';
   document.getElementById('pp-max-posts').value = '6';
   document.getElementById('pp-prompt').value = '';
+  document.querySelector('input[name="pp-content-mode"][value="products"]').checked = true;
+  document.querySelector('input[name="pp-custom-type"][value="manual"]').checked = true;
+  document.querySelector('input[name="pp-schedule-mode"][value="fixed"]').checked = true;
+  document.getElementById('pp-custom-message').value = '';
+  document.getElementById('pp-custom-ai-prompt').value = '';
+  document.getElementById('pp-custom-image').value = '';
+  document.getElementById('pp-interval-hours').value = '12';
+  updatePpContentMode();
+  updatePpCustomType();
+  updatePpScheduleMode();
   document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => b.classList.add('active'));
   setPpTimePreset('09:00,12:00,18:00');
   await Promise.all([loadPpGroupSelector(), loadPpSeriesSelector()]);
@@ -2895,6 +2991,17 @@ async function editPostProfile(id) {
   document.getElementById('pp-min-discount').value = p.min_discount || 20;
   document.getElementById('pp-max-posts').value = p.max_posts_per_day || 6;
   document.getElementById('pp-prompt').value = p.claude_prompt || '';
+
+  document.querySelector(`input[name="pp-content-mode"][value="${p.content_mode === 'custom' ? 'custom' : 'products'}"]`).checked = true;
+  document.querySelector(`input[name="pp-custom-type"][value="${p.custom_message_type === 'ai' ? 'ai' : 'manual'}"]`).checked = true;
+  document.getElementById('pp-custom-message').value = p.custom_message_text || '';
+  document.getElementById('pp-custom-ai-prompt').value = p.custom_ai_prompt || '';
+  document.getElementById('pp-custom-image').value = p.custom_image_url || '';
+  document.querySelector(`input[name="pp-schedule-mode"][value="${p.schedule_mode === 'interval' ? 'interval' : 'fixed'}"]`).checked = true;
+  document.getElementById('pp-interval-hours').value = p.interval_hours || 12;
+  updatePpContentMode();
+  updatePpCustomType();
+  updatePpScheduleMode();
 
   const days = p.post_days === '*' ? ['0','1','2','3','4','5','6'] : (p.post_days || '').split(',');
   document.querySelectorAll('#pp-day-buttons .day-btn').forEach(b => {
@@ -2915,6 +3022,9 @@ async function savePostProfile(e) {
   const selectedGroups = syncPpSelectedGroupIds();
   const selectedSeries = Array.from(document.querySelectorAll('.pp-series-cb:checked')).map(cb => cb.value);
   const times = ppTimes.slice().sort((a,b) => a.localeCompare(b));
+  const contentMode = document.querySelector('input[name="pp-content-mode"]:checked').value;
+  const customType = document.querySelector('input[name="pp-custom-type"]:checked').value;
+  const scheduleMode = document.querySelector('input[name="pp-schedule-mode"]:checked').value;
 
   const payload = {
     name: document.getElementById('pp-name').value.trim(),
@@ -2928,11 +3038,21 @@ async function savePostProfile(e) {
     price_max: document.getElementById('pp-price-max').value,
     max_posts_per_day: document.getElementById('pp-max-posts').value,
     claude_prompt: document.getElementById('pp-prompt').value.trim(),
+    content_mode: contentMode,
+    custom_message_type: customType,
+    custom_message_text: document.getElementById('pp-custom-message').value.trim(),
+    custom_ai_prompt: document.getElementById('pp-custom-ai-prompt').value.trim(),
+    custom_image_url: document.getElementById('pp-custom-image').value.trim(),
+    schedule_mode: scheduleMode,
+    interval_hours: document.getElementById('pp-interval-hours').value,
   };
 
   if (!payload.name) return toast('Nome é obrigatório.', 'err');
-  if (!times.length) return toast('Adicione pelo menos um horário.', 'err');
   if (!selectedGroups.length && !selectedSeries.length) return toast('Selecione ao menos um grupo ou série.', 'err');
+  if (scheduleMode === 'fixed' && !times.length) return toast('Adicione pelo menos um horário.', 'err');
+  if (scheduleMode === 'interval' && (!payload.interval_hours || parseInt(payload.interval_hours) < 1)) return toast('Informe um intervalo de horas válido.', 'err');
+  if (contentMode === 'custom' && customType === 'manual' && !payload.custom_message_text) return toast('Escreva a mensagem, ou escolha "IA escreve pra mim".', 'err');
+  if (contentMode === 'custom' && customType === 'ai' && !payload.custom_ai_prompt) return toast('Descreva o que a IA deve escrever.', 'err');
 
   const url = id ? `/api/post-profiles/${id}` : '/api/post-profiles';
   const method = id ? 'PUT' : 'POST';
@@ -2959,12 +3079,14 @@ async function deletePostProfileConfirm(id) {
 }
 
 async function postProfileNow(id) {
-  toast('🔎 Buscando produto para este perfil...');
+  toast('🔎 Postando...');
   try {
     const res = await fetch(`/api/post-profiles/${id}/post-now`, { method: 'POST' });
     const data = await res.json();
     if (data.error) return toast('❌ ' + data.error, 'err');
-    toast(`✅ Postado "${data.product}" em ${data.groupsSent} grupo(s)!${data.usedFallback ? ' (produto de fallback)' : ''}`);
+    toast(data.product
+      ? `✅ Postado "${data.product}" em ${data.groupsSent} grupo(s)!${data.usedFallback ? ' (produto de fallback)' : ''}`
+      : `✅ Mensagem enviada para ${data.groupsSent} grupo(s)!`);
   } catch (err) {
     toast('❌ Erro ao postar: ' + err.message, 'err');
   }
