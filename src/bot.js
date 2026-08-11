@@ -278,6 +278,17 @@ function productOriginLabel(fallback, isNew) {
 // de gerar uma vez só e repetir) — evita mandar o texto idêntico pra dezenas de grupos, o que
 // além de parecer genérico é outro padrão fácil de identificar como spam. Modo manual continua
 // reaproveitando sempre o mesmo texto, já que foi o usuário quem escreveu — não tem o que variar.
+
+// Intervalo entre grupos pra mensagem própria/divulgação: minutos, não segundos — um usuário
+// real já foi banido do WhatsApp (e precisou recorrer pra recuperar a conta) usando um delay
+// de 15-45s pra uma lista de 73 grupos. Quanto maior a lista, maior o intervalo, já que listas
+// grandes são o cenário de maior risco.
+function customBroadcastDelayRange(groupCount) {
+  if (groupCount <= 1) return null;
+  if (groupCount > 20) return [180000, 300000]; // 3–5 min
+  return [90000, 180000]; // 1,5–3 min
+}
+
 async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
   const isAi = profile.custom_message_type === 'ai';
   const imageUrl = profile.custom_image_url || null;
@@ -308,7 +319,7 @@ async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
     return text;
   }
 
-  const delayMsRange = groupIds.length > 1 ? [15000, 45000] : null;
+  const delayMsRange = customBroadcastDelayRange(groupIds.length);
   const { sent, failed, skipped } = await sendToGroups(userId, groupIds, null, imageUrl, { delayMsRange, textFn });
   const text = firstText || (isAi ? '(a IA não gerou nenhuma versão com sucesso)' : '');
   userDb.addPostHistory(null, isAi ? `${text}${sent.length > 1 ? ' (+ outras versões geradas pela IA pros demais grupos)' : ''}` : text, 'sent', null, profile.id);
@@ -323,7 +334,7 @@ async function runCustomBroadcast(userId, userDb, profile, groupIds, io, tag) {
     userDb.addLog('warning', 'post', `${tag} Mensagem própria falhou em ${failed.length}/${groupIds.length} grupo(s).`);
   }
   if (skipped.length) {
-    userDb.addLog('warning', 'post', `${tag} Conexão caiu durante o envio e não voltou a tempo — ${skipped.length} grupo(s) não foram tentados (pode postar de novo pra completar).`);
+    userDb.addLog('warning', 'post', `${tag} Conexão caiu durante o envio — parado por segurança, ${skipped.length} grupo(s) não foram tentados. Verifique se está tudo bem antes de postar de novo (evite tentar de novo repetidamente em seguida).`);
   }
   userDb.addLog('info', 'post', `${tag} Mensagem própria enviada para ${sent.length} grupo(s).`);
   return { sent, failed, skipped, text };
@@ -514,19 +525,6 @@ async function sendPost(client, jid, text, imageUrl) {
   return client.sendMessage(jid, { text });
 }
 
-// Espera a conexão voltar sozinha (o handler de connection.update já dispara
-// initWhatsApp de novo automaticamente em quedas comuns) por até maxWaitMs,
-// checando a cada 3s. Usado no meio de um envio em lote pra não jogar fora o
-// resto da lista só porque o WhatsApp derrubou a conexão a meio do caminho.
-async function waitForReconnect(userId, maxWaitMs) {
-  const start = Date.now();
-  while (Date.now() - start < maxWaitMs) {
-    if (getTenant(userId).botStatus === 'connected') return true;
-    await new Promise(resolve => setTimeout(resolve, 3000));
-  }
-  return getTenant(userId).botStatus === 'connected';
-}
-
 /**
  * Envia a um grupo, isolando falhas de cada destinatário (uma falha não derruba os demais).
  * Loga sucesso/erro por grupo — inclusive o ID da mensagem retornado, pra diagnosticar
@@ -543,12 +541,11 @@ async function waitForReconnect(userId, maxWaitMs) {
  * do texto idêntico repetido. Se a geração falhar pra um grupo específico, esse grupo entra
  * como falha (com o motivo) e o envio segue normalmente pros próximos.
  *
- * Recebe userId (não o client direto) porque, num envio pra muitos grupos, a conexão pode
- * cair no meio (o WhatsApp às vezes derruba sessões em rajadas de mensagens) — quando isso
- * acontece, espera até 1 minuto pela reconexão automática (já existente no bot) antes de
- * desistir do restante, e usa o client mais recente a cada tentativa (a reconexão troca a
- * instância). Sem isso, uma queda no meio do caminho fazia todo o resto da lista falhar em
- * cascata só porque estava reaproveitando um client antigo/morto.
+ * IMPORTANTE — segurança da conta: se a conexão cair no meio de um envio pra vários grupos,
+ * PARA IMEDIATAMENTE e não tenta mais nada sozinho (não espera, não reconecta, não insiste).
+ * Uma queda nesse momento costuma ser o próprio WhatsApp reagindo ao volume de mensagens —
+ * ficar tentando de novo automaticamente é exatamente o padrão que mais aumenta risco de
+ * banimento. O usuário decide manualmente se quer tentar de novo mais tarde.
  */
 async function sendToGroups(userId, groupIds, text, imageUrl, opts = {}) {
   const { delayMsRange, textFn } = opts;
@@ -559,14 +556,9 @@ async function sendToGroups(userId, groupIds, text, imageUrl, opts = {}) {
     const gid = groupIds[i];
     const t = getTenant(userId);
     if (t.botStatus !== 'connected') {
-      console.log(`[Bot] Conexão não está ativa (status: ${t.botStatus}) — aguardando reconexão automática antes de continuar o envio...`);
-      const reconnected = await waitForReconnect(userId, 60000);
-      if (!reconnected) {
-        console.error(`[Bot] Conexão não voltou a tempo. Parando envio — ${groupIds.length - i} grupo(s) não tentados.`);
-        skipped.push(...groupIds.slice(i));
-        break;
-      }
-      console.log('[Bot] Conexão restabelecida, retomando o envio.');
+      console.error(`[Bot] Conexão não está ativa (status: ${t.botStatus}) — parando o envio por segurança (insistir automaticamente aumenta risco de banimento). ${groupIds.length - i} grupo(s) não tentados.`);
+      skipped.push(...groupIds.slice(i));
+      break;
     }
 
     let msgText = text;
@@ -1079,7 +1071,7 @@ async function runAutoPost(userId, io, profileId) {
       const { sent, failed, skipped, text } = await runCustomBroadcast(userId, userDb, profile, groupIds, io, tag);
       const warnParts = [];
       if (failed.length) warnParts.push(`falhou em ${failed.length}`);
-      if (skipped.length) warnParts.push(`${skipped.length} não tentado(s) (conexão caiu e não voltou a tempo — pode postar de novo pra completar)`);
+      if (skipped.length) warnParts.push(`${skipped.length} não tentado(s) (conexão caiu, envio parado por segurança)`);
       return {
         ok: true, profile: profile.name, product: null, text,
         groupsSent: sent.length, groupsFailed: failed.length, groupsSkipped: skipped.length, usedFallback: false,

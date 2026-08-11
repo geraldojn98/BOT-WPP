@@ -1144,9 +1144,19 @@
       </div>
 
       <div id="pp-custom-area" style="display:none;">
-        <div class="hint hint-red" style="font-size:0.82rem;">
-          ⚠️ <strong>Cuidado com banimento:</strong> enviar a mesma mensagem pra muitos grupos com muita frequência é um padrão que o WhatsApp pode identificar como spam. O bot já aplica um intervalo aleatório entre cada grupo quando você seleciona vários de uma vez, pra parecer mais orgânico — mesmo assim, evite postar em excesso e prefira intervalos maiores (a cada várias horas, não a cada poucos minutos).
+        <div class="hint hint-red" style="font-size:0.85rem;line-height:1.55;">
+          <strong>⚠️ Risco real de banimento — já aconteceu de uma conta ser banida usando este recurso</strong> (o dono conseguiu recorrer e recuperar, mas isso não é garantido). Mandar mensagem promocional pra muitos grupos, principalmente grupos que você não administra, é o comportamento que o WhatsApp mais associa a spam. O bot toma alguns cuidados, mas eles reduzem o risco, não eliminam:
+          <ul style="margin:8px 0 0 18px; padding:0;">
+            <li>Intervalo de 1,5 a 5 minutos entre cada grupo (maior quanto mais grupos)</li>
+            <li>Se a conexão cair no meio do envio, o bot <strong>para na hora</strong> — não fica insistindo sozinho</li>
+            <li>No modo IA, cada grupo recebe um texto diferente (menos repetitivo)</li>
+          </ul>
+          <div style="margin-top:8px;">Quanto mais grupos de uma vez, e principalmente quanto mais grupos que você <u>não</u> administra, maior o risco. Prefira grupos próprios e listas menores/mais espaçadas ao longo do dia.</div>
         </div>
+        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin:10px 0 4px;font-size:0.85rem;background:#fdecea;padding:10px 12px;border-radius:8px;">
+          <input type="checkbox" id="pp-custom-risk-ack" style="width:auto;margin-top:3px;flex-shrink:0;" />
+          <span>Entendi o risco de banimento explicado acima e quero continuar mesmo assim.</span>
+        </label>
         <div class="form-group">
           <div class="form-label">Quem escreve a mensagem?</div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -2999,6 +3009,7 @@ async function openNewPostProfile() {
   document.querySelector('input[name="pp-interval-first-mode"][value="now"]').checked = true;
   document.getElementById('pp-custom-message').value = '';
   document.getElementById('pp-custom-ai-prompt').value = '';
+  document.getElementById('pp-custom-risk-ack').checked = false;
   resetImgWidget('pp-custom');
   document.getElementById('pp-interval-hours').value = '12';
   document.getElementById('pp-interval-first-time').value = '09:00';
@@ -3028,6 +3039,7 @@ async function editPostProfile(id) {
   document.querySelector(`input[name="pp-custom-type"][value="${p.custom_message_type === 'ai' ? 'ai' : 'manual'}"]`).checked = true;
   document.getElementById('pp-custom-message').value = p.custom_message_text || '';
   document.getElementById('pp-custom-ai-prompt').value = p.custom_ai_prompt || '';
+  document.getElementById('pp-custom-risk-ack').checked = false;
   resetImgWidget('pp-custom');
   if (p.custom_image_url) {
     const hidden = document.getElementById('pp-custom-img-value');
@@ -3102,6 +3114,7 @@ async function savePostProfile(e) {
   if (scheduleMode === 'interval' && (!payload.interval_hours || parseInt(payload.interval_hours) < 1)) return toast('Informe um intervalo de horas válido.', 'err');
   if (contentMode === 'custom' && customType === 'manual' && !payload.custom_message_text) return toast('Escreva a mensagem, ou escolha "IA escreve pra mim".', 'err');
   if (contentMode === 'custom' && customType === 'ai' && !payload.custom_ai_prompt) return toast('Descreva o que a IA deve escrever.', 'err');
+  if (contentMode === 'custom' && !document.getElementById('pp-custom-risk-ack').checked) return toast('Marque que você entendeu o risco de banimento antes de salvar.', 'err');
 
   const url = id ? `/api/post-profiles/${id}` : '/api/post-profiles';
   const method = id ? 'PUT' : 'POST';
