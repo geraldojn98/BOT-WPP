@@ -249,13 +249,22 @@ async function resolveProductToPost(userId, userDb, { minDiscount, keywords, pri
     console.error('[Post] Falha ao buscar no ML, tentando produto de fallback já cadastrado:', err.message);
   }
 
+  // Palavras-chave do perfil (nicho, ex: "DJI Agras") também valem pro fallback — senão um
+  // perfil nichado podia cair pra qualquer produto cadastrado na conta, de outro nicho
+  // completamente diferente (ex: perfil de peças de drone agrícola postando "potes herméticos"
+  // porque isso é o que tinha, sem relação nenhuma, no catálogo geral do usuário).
+  const keywordTerms = (keywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
   const eligible = userDb.getActiveProducts().filter(p => {
     if (p.ml_id && excludeIds.has(p.ml_id)) return false;
     if (p.ml_id && userDb.wasPostedRecentlyByMlId(p.ml_id, 24)) return false;
+    if (keywordTerms.length) {
+      const title = (p.title || '').toLowerCase();
+      if (!keywordTerms.some(term => title.includes(term))) return false;
+    }
     return true;
   });
   if (!eligible.length) {
-    if (mlError) throw new Error(`${mlError.message} Além disso, não há produtos cadastrados disponíveis pra usar como alternativa.`);
+    if (mlError) throw new Error(`${mlError.message}${keywordTerms.length ? ' Além disso, não há produtos cadastrados que combinem com as palavras-chave deste perfil.' : ' Além disso, não há produtos cadastrados disponíveis pra usar como alternativa.'}`);
     return { product: null, fallback: false };
   }
   const chosen = eligible[Math.floor(Math.random() * eligible.length)];

@@ -160,7 +160,15 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
 
   let candidates = []; // { ml_id, url (catalog href) }
   let ofertasError = null;
+  const hasKeywords = !!(keywords && keywords.trim());
 
+  // Perfil com palavras-chave (nicho, ex: "peças de drone agrícola") — pula a raspagem
+  // genérica de /ofertas de propósito. Antes ela sempre rodava e entrava misturada no
+  // mesmo balaio de candidatos junto com os resultados da busca por palavra-chave, sorteado
+  // sem prioridade nenhuma pra quem tinha keyword — o que fazia um perfil nichado às vezes
+  // acabar postando qualquer produto aleatório do feed geral de ofertas (ex: "DJI Agras"
+  // postando "potes herméticos"). Com keyword definida, só usa os resultados da busca.
+  if (!hasKeywords) {
   // ── 1. Raspa /ofertas: extrai ID + título + preço via forward-search ────────
   try {
     const { data: html } = await axios.get('https://www.mercadolivre.com.br/ofertas', {
@@ -227,10 +235,14 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     console.error('[ML Scrape] Erro em /ofertas:', err.message);
     ofertasError = err;
   }
+  }
 
   // ── 2. Keywords via ML Search API ────────────────────────────────────────
-  if (keywords && keywords.trim()) {
-    const terms = keywords.split(',').map(k => k.trim()).filter(Boolean).slice(0, 3);
+  if (hasKeywords) {
+    // Até 6 termos — perfis de nicho (ex: "drones agrícolas, geradores para drone,
+    // misturador, motobomba, epi") costumam precisar de vários termos pra cobrir o
+    // segmento inteiro, não só o produto principal.
+    const terms = keywords.split(',').map(k => k.trim()).filter(Boolean).slice(0, 6);
     const authHeaders = process.env.ML_ACCESS_TOKEN && process.env.ML_ACCESS_TOKEN !== 'seu_access_token_aqui'
       ? { Authorization: `Bearer ${process.env.ML_ACCESS_TOKEN}` } : {};
     for (const term of terms) {
