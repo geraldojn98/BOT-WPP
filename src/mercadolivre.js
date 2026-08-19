@@ -303,28 +303,12 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
   // Isso evita dependência da API pública (que retorna 403) e garante que
   // título e imagem são exatamente os do produto que o usuário vai ver ao clicar.
   // Preço/desconto vêm do scraping de /ofertas (já filtrado por minDiscount).
-  // Monta o resultado a partir dos dados já extraídos na raspagem de /ofertas (título,
-  // preço, desconto, imagem quando disponível) — usado quando a verificação na página
-  // individual do produto não é possível (bloqueio antibot do ML, timeout, etc.).
-  async function buildFromScrapedData(p, reason) {
-    console.log(`[ML] ⚠️ ${reason} (${p.ml_id}) — usando dados da raspagem de /ofertas.`);
-    const sep = p.url.includes('?') ? '&' : '?';
-    const fallbackUrl = tag ? `${p.url}${sep}matt_tool=painel-afiliados&matt_word=${tag}&matt_source=bot_whatsapp` : p.url;
-    const meliLink = await generateMeliLink(userId, p.url).catch(() => null);
-    return {
-      ml_id: p.ml_id,
-      title: p.title,
-      url: p.url,
-      affiliate_url: meliLink || p.affiliate_url || fallbackUrl,
-      price: p.price,
-      original_price: p.original_price,
-      discount_percent: p.discount_percent,
-      image_url: p.image_url || null,
-      category: null,
-      custom_text: null,
-    };
-  }
-
+  //
+  // Importante: se não der pra abrir/confirmar a página real do produto, o candidato é
+  // DESCARTADO — não posta com dados só do scraping de /ofertas. Essa raspagem localiza
+  // título/preço por proximidade de texto no HTML, e já causou na prática um produto
+  // postado com a descrição/preço de OUTRO produto (mesma região da página, itens
+  // diferentes). Preferível pular um candidato a arriscar postar a coisa errada.
   async function verifyOne(p) {
     let r;
     try {
@@ -335,7 +319,13 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
         validateStatus: () => true,
       });
     } catch (e) {
-      return buildFromScrapedData(p, `Erro ao abrir página (${e.message})`);
+      // Sem acesso à página de verdade do produto, não tem como confirmar que o
+      // título/preço raspados de /ofertas realmente são desse mesmo link — a raspagem
+      // por proximidade de texto já causou pelo menos um caso real de mismatch (preço e
+      // descrição de um produto, link de outro completamente diferente). Descarta em vez
+      // de confiar cegamente nos dados não verificados.
+      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — erro ao abrir página (${e.message}), sem como confirmar que os dados batem com o link.`);
+      return null;
     }
 
     const body = typeof r.data === 'string' ? r.data : '';
@@ -346,11 +336,11 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
       return null;
     }
 
-    // Bloqueio antibot do ML (página de "suspicious traffic") ou erro HTTP — não dá pra
-    // confirmar disponibilidade, mas também não há motivo pra descartar o produto: os dados
-    // já raspados de /ofertas continuam válidos.
+    // Bloqueio antibot do ML (página de "suspicious traffic") ou erro HTTP — mesmo motivo
+    // acima: sem a página real pra conferir, não arrisca postar título/preço não verificados.
     if (r.status >= 400 || body.includes('suspicious-traffic')) {
-      return buildFromScrapedData(p, `Bloqueado/erro HTTP ${r.status} ao verificar página do produto`);
+      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — bloqueado/erro HTTP ${r.status} ao verificar página do produto.`);
+      return null;
     }
 
     // Extrai título, imagem e URL canônica dos meta og: — são 100% do produto correto
@@ -359,7 +349,8 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     const ogUrl   = body.match(/<meta[^>]+property="og:url"[^>]+content="([^"]+)"/)?.[1];
 
     if (!ogTitle) {
-      return buildFromScrapedData(p, 'Página carregou mas sem meta og:title reconhecível');
+      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — página carregou mas sem meta og:title reconhecível pra confirmar o produto.`);
+      return null;
     }
 
     try {
@@ -404,7 +395,11 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
         custom_text:      null,
       };
     } catch (e) {
-      return buildFromScrapedData(p, `Erro ao processar página (${e.message})`);
+      // Já tínhamos o og:title verificado (a página real, confirmada) — mas algo deu
+      // errado processando o resto (preço, link de afiliado). Mesmo assim não cai pro
+      // título/preço não verificados do scraping; só descarta esse candidato.
+      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — erro ao processar página verificada (${e.message}).`);
+      return null;
     }
   }
 
