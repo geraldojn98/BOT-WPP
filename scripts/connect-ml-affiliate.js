@@ -31,15 +31,16 @@ async function main() {
   const localFile = path.join(__dirname, '..', 'data', `ml-cookies-${USER_ID}.json`);
   const remotePath = `/ml-cookies-${USER_ID}.json`;
 
+  // Ordem das flags importa pro CLI do Railway: --service pertence a "volume",
+  // --volume pertence a "files" — colocar as duas depois de "upload" (como estava
+  // antes aqui) dá erro "unexpected argument '--service' found".
+  const uploadCmd = `railway volume --service ${SERVICE} files --volume ${VOLUME} upload "${localFile}" "${remotePath}" --overwrite`;
   try {
-    execSync(
-      `railway volume files upload "${localFile}" "${remotePath}" --overwrite --service ${SERVICE} --volume ${VOLUME}`,
-      { stdio: 'inherit' }
-    );
+    execSync(uploadCmd, { stdio: 'inherit' });
   } catch (err) {
     console.error('\n⚠️  Login funcionou, mas o envio automático pro Railway falhou.');
     console.error('Rode este comando manualmente pra completar:');
-    console.error(`railway volume files upload "${localFile}" "${remotePath}" --overwrite --service ${SERVICE} --volume ${VOLUME}`);
+    console.error(uploadCmd);
     process.exitCode = 1;
     return;
   }
