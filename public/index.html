@@ -286,17 +286,17 @@
 </header>
 
 <nav>
-  <button class="nav-btn active" onclick="showPage('dashboard', this)">🏠 Início</button>
-  <button class="nav-btn" onclick="showPage('groups', this)">📱 Grupos</button>
-  <button class="nav-btn" onclick="showPage('postprofiles', this)">🗂️ Perfis de Postagem</button>
-  <button class="nav-btn" onclick="showPage('autoreply', this)">🗨️ Respostas</button>
-  <button class="nav-btn" onclick="showPage('campaigns', this)">📢 Campanhas</button>
-  <button class="nav-btn" onclick="showPage('webhooks', this)">🔗 Integrações</button>
-  <button class="nav-btn" onclick="showPage('instagram', this)">📸 Instagram</button>
-  <button class="nav-btn" onclick="showPage('products', this)">📦 Produtos</button>
-  <button class="nav-btn" onclick="showPage('history', this)">📋 Histórico</button>
-  <button class="nav-btn" onclick="showPage('logs', this)">🪵 Histórico Log</button>
-  <button class="nav-btn" onclick="showPage('settings', this)">⚙️ Configurações</button>
+  <button class="nav-btn active" id="nav-dashboard" onclick="showPage('dashboard', this)">🏠 Início</button>
+  <button class="nav-btn" id="nav-groups" onclick="showPage('groups', this)">📱 Grupos</button>
+  <button class="nav-btn" id="nav-postprofiles" onclick="showPage('postprofiles', this)">🗂️ Perfis de Postagem</button>
+  <button class="nav-btn" id="nav-autoreply" onclick="showPage('autoreply', this)">🗨️ Respostas</button>
+  <button class="nav-btn" id="nav-campaigns" onclick="showPage('campaigns', this)">📢 Campanhas</button>
+  <button class="nav-btn" id="nav-webhooks" onclick="showPage('webhooks', this)">🔗 Integrações</button>
+  <button class="nav-btn" id="nav-instagram" onclick="showPage('instagram', this)">📸 Instagram</button>
+  <button class="nav-btn" id="nav-products" onclick="showPage('products', this)">📦 Produtos</button>
+  <button class="nav-btn" id="nav-history" onclick="showPage('history', this)">📋 Histórico</button>
+  <button class="nav-btn" id="nav-logs" onclick="showPage('logs', this)">🪵 Histórico Log</button>
+  <button class="nav-btn" id="nav-settings" onclick="showPage('settings', this)">⚙️ Configurações</button>
 </nav>
 
 <main>
@@ -1649,12 +1649,18 @@ function setGroupOpenFilter(filter) {
 }
 
 // ===== NAVEGAÇÃO =====
+const VALID_PAGES = ['dashboard', 'groups', 'postprofiles', 'autoreply', 'campaigns', 'webhooks', 'instagram', 'products', 'history', 'logs', 'settings'];
+
 function showPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
+  if (!btn) btn = document.getElementById('nav-' + name);
   if (btn) btn.classList.add('active');
   setMobileNav(name);
+  // Guarda a aba atual na URL (#produtos, #grupos...) — assim um F5 na página
+  // continua na mesma aba, em vez de sempre voltar pro Início.
+  if (window.location.hash.slice(1) !== name) window.location.hash = name;
   if (name === 'products') { loadProducts(); loadProductsProfileSelect(); }
   if (name === 'history') loadHistory();
   if (name === 'logs') loadLogs();
@@ -1667,6 +1673,19 @@ function showPage(name, btn) {
   if (name === 'webhooks') loadWebhooksPage();
   if (name === 'instagram') loadInstagramPage();
 }
+
+// Ao carregar a página (ou navegar pelo botão voltar/avançar do navegador), abre a
+// aba que estiver no hash da URL — se não tiver nenhuma (ou for inválida), fica no Início.
+function openPageFromHash() {
+  const name = window.location.hash.slice(1);
+  const target = VALID_PAGES.includes(name) ? name : 'dashboard';
+  // Evita recarregar os dados da aba à toa quando é o próprio showPage() que
+  // acabou de mudar o hash (o evento hashchange dispara depois, async).
+  const current = document.querySelector('.page.active');
+  if (current && current.id === 'page-' + target) return;
+  showPage(target);
+}
+window.addEventListener('hashchange', openPageFromHash);
 
 function setMobileNav(name) {
   document.querySelectorAll('#mobile-nav button').forEach(b => b.classList.remove('active'));
@@ -4012,7 +4031,7 @@ async function editProduct(id) {
   openModal('modal-edit');
 }
 
-loadDashboard();
+openPageFromHash();
 </script>
 </body>
 </html>
