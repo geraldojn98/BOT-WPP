@@ -420,10 +420,18 @@ function createUserDb(userId) {
     `).all(limit);
   }
   // ===== LOG DE EVENTOS DO ROBÔ (pra aba Histórico Log) =====
+  // addLog é chamado de dentro de handlers de evento do WhatsApp (conexão, mensagens etc.)
+  // espalhados pelo bot.js — uma falha aqui (ex: disco cheio/sem inodes, como já aconteceu)
+  // não pode derrubar o processo inteiro pra TODOS os usuários. É só um log operacional,
+  // não histórico crítico, então em caso de erro só registra no console e segue o baile.
   function addLog(level, category, message) {
-    db.prepare('INSERT INTO event_log (level, category, message) VALUES (?, ?, ?)').run(level, category, message);
-    // Mantém só os últimos 500 eventos — é um log operacional, não histórico permanente.
-    db.prepare('DELETE FROM event_log WHERE id NOT IN (SELECT id FROM event_log ORDER BY id DESC LIMIT 500)').run();
+    try {
+      db.prepare('INSERT INTO event_log (level, category, message) VALUES (?, ?, ?)').run(level, category, message);
+      // Mantém só os últimos 500 eventos — é um log operacional, não histórico permanente.
+      db.prepare('DELETE FROM event_log WHERE id NOT IN (SELECT id FROM event_log ORDER BY id DESC LIMIT 500)').run();
+    } catch (err) {
+      console.error('[DB] Falha ao gravar log de evento (não fatal):', err.message);
+    }
   }
   function getLogs(limit = 200, level = null) {
     if (level) return db.prepare('SELECT * FROM event_log WHERE level = ? ORDER BY id DESC LIMIT ?').all(level, limit);

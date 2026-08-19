@@ -18,9 +18,27 @@ const DAY_NAMES = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quin
 
 function getTenant(userId) {
   if (!tenants.has(userId)) {
-    tenants.set(userId, { client: null, botStatus: 'disconnected', qrCodeData: null, cronJob: null, manualDisconnect: false });
+    tenants.set(userId, { client: null, botStatus: 'disconnected', qrCodeData: null, cronJob: null, manualDisconnect: false, lastLidPruneAt: 0 });
   }
   return tenants.get(userId);
+}
+
+// O Baileys nunca limpa sozinho o cache de "lid-mapping" (um par de arquivos por contato já
+// visto em qualquer grupo, pra sempre) — isso já esgotou os inodes do volume inteiro e derrubou
+// o servidor pra todos os usuários de uma vez (aconteceu na prática: 130 mil+ arquivos numa
+// única conta). É só cache de resolução de ID, reconstruído sozinho sob demanda — seguro podar
+// periodicamente. Chamado uma vez por dia por usuário, a partir do cron de cada um.
+function pruneLidMappingCache(userId) {
+  const dir = authDirFor(userId);
+  let removed = 0;
+  try {
+    for (const file of fs.readdirSync(dir)) {
+      if (file.startsWith('lid-mapping-')) {
+        try { fs.unlinkSync(path.join(dir, file)); removed++; } catch (_) {}
+      }
+    }
+  } catch (_) { /* pasta pode não existir ainda */ }
+  if (removed) console.log(`[Bot] (usuário ${userId}) Limpeza periódica: removidos ${removed} arquivo(s) de cache lid-mapping.`);
 }
 
 // Manda um evento só pro(s) socket(s) daquele usuário — nunca um broadcast geral,
@@ -97,41 +115,49 @@ async function initWhatsApp(userId, io) {
   client.ev.on('creds.update', saveCreds);
 
   client.ev.on('connection.update', async (update) => {
-    const { connection, qr, lastDisconnect } = update;
+    // Todo o corpo protegido por try/catch: isso é um handler de evento assíncrono, e um
+    // erro não tratado aqui dentro (promise rejeitada sem catch) derruba o processo Node
+    // INTEIRO — não só a conexão desse usuário, mas o servidor pra todo mundo. Já aconteceu
+    // na prática (disco sem inodes fazendo addLog falhar) e tirou todos os usuários do ar.
+    try {
+      const { connection, qr, lastDisconnect } = update;
 
-    if (qr) {
-      t.botStatus = 'qr_pending';
-      t.qrCodeData = await qrcode.toDataURL(qr);
-      console.log(`[Bot] (usuário ${userId}) QR Code gerado — escaneie pelo WhatsApp`);
-      emitToUser(io, userId, 'status', getStatus(userId));
-    }
-
-    if (connection === 'open') {
-      t.botStatus = 'connected';
-      t.qrCodeData = null;
-      console.log(`[Bot] (usuário ${userId}) WhatsApp conectado!`);
-      userDb.addLog('info', 'whatsapp', 'WhatsApp conectado.');
-      emitToUser(io, userId, 'status', getStatus(userId));
-      startCron(userId, io);
-    }
-
-    if (connection === 'close') {
-      t.botStatus = 'disconnected';
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
-      console.log(`[Bot] (usuário ${userId}) Desconectado. Código:`, statusCode, lastDisconnect?.error?.message || '');
-      emitToUser(io, userId, 'status', getStatus(userId));
-      if (t.cronJob) { t.cronJob.stop(); t.cronJob = null; }
-
-      if (statusCode === DisconnectReason.loggedOut) {
-        // Sessão invalidada pelo próprio WhatsApp (ex: removido dos aparelhos conectados) —
-        // limpa credenciais salvas, só reconecta com um novo QR Code.
-        userDb.addLog('error', 'whatsapp', 'Sessão do WhatsApp encerrada pelo próprio WhatsApp (aparelho removido) — é preciso escanear um novo QR Code.');
-        try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (_) {}
-      } else if (!t.manualDisconnect) {
-        userDb.addLog('warning', 'whatsapp', `WhatsApp desconectado (código ${statusCode || '?'}). Tentando reconectar automaticamente...`);
-        console.log(`[Bot] (usuário ${userId}) Tentando reconectar automaticamente...`);
-        initWhatsApp(userId, io).catch(err => console.error(`[Bot] (usuário ${userId}) Falha ao reconectar:`, err.message));
+      if (qr) {
+        t.botStatus = 'qr_pending';
+        t.qrCodeData = await qrcode.toDataURL(qr);
+        console.log(`[Bot] (usuário ${userId}) QR Code gerado — escaneie pelo WhatsApp`);
+        emitToUser(io, userId, 'status', getStatus(userId));
       }
+
+      if (connection === 'open') {
+        t.botStatus = 'connected';
+        t.qrCodeData = null;
+        console.log(`[Bot] (usuário ${userId}) WhatsApp conectado!`);
+        userDb.addLog('info', 'whatsapp', 'WhatsApp conectado.');
+        emitToUser(io, userId, 'status', getStatus(userId));
+        startCron(userId, io);
+      }
+
+      if (connection === 'close') {
+        t.botStatus = 'disconnected';
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        console.log(`[Bot] (usuário ${userId}) Desconectado. Código:`, statusCode, lastDisconnect?.error?.message || '');
+        emitToUser(io, userId, 'status', getStatus(userId));
+        if (t.cronJob) { t.cronJob.stop(); t.cronJob = null; }
+
+        if (statusCode === DisconnectReason.loggedOut) {
+          // Sessão invalidada pelo próprio WhatsApp (ex: removido dos aparelhos conectados) —
+          // limpa credenciais salvas, só reconecta com um novo QR Code.
+          userDb.addLog('error', 'whatsapp', 'Sessão do WhatsApp encerrada pelo próprio WhatsApp (aparelho removido) — é preciso escanear um novo QR Code.');
+          try { fs.rmSync(authDir, { recursive: true, force: true }); } catch (_) {}
+        } else if (!t.manualDisconnect) {
+          userDb.addLog('warning', 'whatsapp', `WhatsApp desconectado (código ${statusCode || '?'}). Tentando reconectar automaticamente...`);
+          console.log(`[Bot] (usuário ${userId}) Tentando reconectar automaticamente...`);
+          initWhatsApp(userId, io).catch(err => console.error(`[Bot] (usuário ${userId}) Falha ao reconectar:`, err.message));
+        }
+      }
+    } catch (err) {
+      console.error(`[Bot] (usuário ${userId}) Erro não tratado no connection.update (ignorado, processo continua):`, err.message);
     }
   });
 
@@ -194,6 +220,11 @@ function startCron(userId, io) {
 
     // Mensagens agendadas verificadas a cada minuto (independente dos perfis de postagem)
     await checkScheduledMessages(userId, io);
+
+    if (Date.now() - t.lastLidPruneAt > 24 * 3600 * 1000) {
+      t.lastLidPruneAt = Date.now();
+      pruneLidMappingCache(userId);
+    }
 
     const profiles = userDb.getActivePostProfiles();
     for (const profile of profiles) {
