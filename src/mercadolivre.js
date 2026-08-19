@@ -363,7 +363,10 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     }
 
     // Extrai título, imagem e URL canônica dos meta og: — são 100% do produto correto
-    const ogTitle = body.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/)?.[1]?.trim();
+    // Algumas páginas do ML colocam o preço dentro do próprio og:title (ex: "Produto X -
+    // R$ 42,17") — tira esse sufixo redundante, já que o preço vai separado na mensagem.
+    const rawOgTitle = body.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/)?.[1]?.trim();
+    const ogTitle = rawOgTitle?.replace(/\s*-\s*R\$\s*[\d.,]+\s*$/, '');
     const ogImage = body.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/)?.[1];
     const ogUrl   = body.match(/<meta[^>]+property="og:url"[^>]+content="([^"]+)"/)?.[1];
 

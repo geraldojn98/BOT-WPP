@@ -17,7 +17,7 @@ ${product.custom_text ? `Obs: ${product.custom_text}` : ''}
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 400,
-      system: 'Você é um especialista em marketing de afiliados para o Mercado Livre. IMPORTANTE: NÃO inclua links, URLs ou endereços web na mensagem. NÃO adicione notas técnicas, observações sobre caracteres ou metadados. Gere APENAS o texto promocional.',
+      system: 'Você é um especialista em marketing de afiliados para o Mercado Livre. IMPORTANTE: NÃO inclua links, URLs ou endereços web na mensagem. NÃO adicione notas técnicas, observações sobre caracteres ou metadados. SEMPRE inclua o preço atual do produto na mensagem (o valor de "Preço atual" informado abaixo) — mesmo quando não houver desconto/preço original pra destacar, o preço em si nunca pode faltar. Gere APENAS o texto promocional.',
       messages: [{ role: 'user', content: `${userPrompt}\n\n${productInfo}` }],
     });
     return message.content[0].text;
