@@ -238,6 +238,12 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
   }
 
   // ── 2. Keywords via ML Search API ────────────────────────────────────────
+  // O desconto é uma preferência, não uma obrigatória pra quem tem palavra-chave: perfis
+  // de nicho (ex: "peças de drone agrícola") costumam ter pouquíssimos produtos com
+  // desconto ativo no ML a qualquer momento — exigir desconto mínimo nesse caso fazia o
+  // bot nunca encontrar nada. Guarda os resultados COM desconto (strict) separado dos SEM
+  // essa exigência (loose); só cai pro loose se o strict vier vazio, priorizando sempre
+  // "achar algo do nicho certo" sobre "só posta se tiver desconto".
   if (hasKeywords) {
     // Até 6 termos — perfis de nicho (ex: "drones agrícolas, geradores para drone,
     // misturador, motobomba, epi") costumam precisar de vários termos pra cobrir o
@@ -245,6 +251,8 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     const terms = keywords.split(',').map(k => k.trim()).filter(Boolean).slice(0, 6);
     const authHeaders = process.env.ML_ACCESS_TOKEN && process.env.ML_ACCESS_TOKEN !== 'seu_access_token_aqui'
       ? { Authorization: `Bearer ${process.env.ML_ACCESS_TOKEN}` } : {};
+    const strictCandidates = [];
+    const looseCandidates = [];
     for (const term of terms) {
       try {
         const { data } = await axios.get(
@@ -252,24 +260,31 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
           { headers: authHeaders, timeout: 10000 }
         );
         for (const item of (data.results || [])) {
-          if (!item.original_price || item.original_price <= item.price) continue;
-          const disc = Math.round(((item.original_price - item.price) / item.original_price) * 100);
-          if (disc < minDiscount) continue;
           if (pMin && item.price < pMin) continue;
           if (pMax && item.price > pMax) continue;
+          const hasDiscount = item.original_price && item.original_price > item.price;
+          const disc = hasDiscount ? Math.round(((item.original_price - item.price) / item.original_price) * 100) : 0;
           const sep = item.permalink.includes('?') ? '&' : '?';
-          candidates.push({
+          const candidate = {
             ml_id: item.id, catalog_id: null, url: item.permalink,
-            title: item.title, price: item.price, original_price: item.original_price,
+            title: item.title, price: item.price, original_price: hasDiscount ? item.original_price : null,
             discount_percent: disc, image_url: item.thumbnail?.replace('I.jpg','O.jpg') || item.thumbnail,
             affiliate_url: tag ? `${item.permalink}${sep}matt_tool=painel-afiliados&matt_word=${tag}&matt_source=bot_whatsapp` : item.permalink,
             category: null, custom_text: null,
-          });
+          };
+          looseCandidates.push(candidate);
+          if (hasDiscount && disc >= minDiscount) strictCandidates.push(candidate);
         }
         console.log(`[ML Search] "${term}": ${data.results?.length || 0} resultados`);
       } catch (err) {
         console.error(`[ML Search] Erro para "${term}":`, err.message);
       }
+    }
+    if (strictCandidates.length) {
+      candidates.push(...strictCandidates);
+    } else if (looseCandidates.length) {
+      console.log(`[ML Search] Nenhum resultado com desconto >= ${minDiscount}% pra "${keywords}" — usando ${looseCandidates.length} produto(s) do nicho sem desconto garantido.`);
+      candidates.push(...looseCandidates);
     }
   }
 
