@@ -97,6 +97,24 @@ async function ensureBrowser(userId) {
 }
 
 /**
+ * Busca produtos por palavra-chave usando a página pública de busca do próprio
+ * site do ML (lista.mercadolivre.com.br), através da mesma sessão logada já usada
+ * pra gerar links de afiliado. Retorna o HTML da página de resultados.
+ *
+ * Por quê: a API oficial de busca (api.mercadolibre.com/sites/MLB/search) exige um
+ * token com escopo que o app não tem (só client_credentials, sem permissão pra
+ * busca — dá 401/403 mesmo com token recém-renovado). Já a página pública funciona
+ * sem token nenhum, mas bloqueia acesso anônimo/sem sessão (redireciona pra
+ * verificação de conta) — com a sessão logada do afiliado, carrega normal.
+ */
+async function searchProductsHtml(userId, term) {
+  const { page } = await ensureBrowser(userId);
+  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(term)}`;
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+  return page.content();
+}
+
+/**
  * Gera um link meli.la para a URL do produto (usando a sessão de afiliado do
  * usuário indicado). Retorna o short link ou null se não for possível.
  */
@@ -217,4 +235,4 @@ function isSessionReady(userId) {
   return fs.existsSync(cookiesFileFor(userId)) || fs.existsSync(sessionDirFor(userId));
 }
 
-module.exports = { generateMeliLink, setupMlSession, isSessionReady, migrateLegacyMlSession };
+module.exports = { generateMeliLink, searchProductsHtml, setupMlSession, isSessionReady, migrateLegacyMlSession };
