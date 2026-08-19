@@ -97,6 +97,17 @@ async function ensureBrowser(userId) {
 }
 
 /**
+ * Carrega qualquer página do ML através da sessão logada (mesma usada pra gerar link
+ * de afiliado) e retorna o HTML renderizado. Usado quando uma requisição anônima
+ * simples (axios) leva bloqueio/captcha do ML — a sessão logada passa normal.
+ */
+async function fetchPageHtml(userId, url) {
+  const { page } = await ensureBrowser(userId);
+  await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+  return page.content();
+}
+
+/**
  * Busca produtos por palavra-chave usando a página pública de busca do próprio
  * site do ML (lista.mercadolivre.com.br), através da mesma sessão logada já usada
  * pra gerar links de afiliado. Retorna o HTML da página de resultados.
@@ -108,10 +119,7 @@ async function ensureBrowser(userId) {
  * verificação de conta) — com a sessão logada do afiliado, carrega normal.
  */
 async function searchProductsHtml(userId, term) {
-  const { page } = await ensureBrowser(userId);
-  const url = `https://lista.mercadolivre.com.br/${encodeURIComponent(term)}`;
-  await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
-  return page.content();
+  return fetchPageHtml(userId, `https://lista.mercadolivre.com.br/${encodeURIComponent(term)}`);
 }
 
 /**
@@ -235,4 +243,4 @@ function isSessionReady(userId) {
   return fs.existsSync(cookiesFileFor(userId)) || fs.existsSync(sessionDirFor(userId));
 }
 
-module.exports = { generateMeliLink, searchProductsHtml, setupMlSession, isSessionReady, migrateLegacyMlSession };
+module.exports = { generateMeliLink, searchProductsHtml, fetchPageHtml, setupMlSession, isSessionReady, migrateLegacyMlSession };

@@ -1,7 +1,7 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { generateMeliLink, searchProductsHtml } = require('./mlAffiliate');
+const { generateMeliLink, searchProductsHtml, fetchPageHtml } = require('./mlAffiliate');
 
 const ML_BASE = 'https://api.mercadolibre.com';
 
@@ -319,37 +319,46 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
   // título/preço por proximidade de texto no HTML, e já causou na prática um produto
   // postado com a descrição/preço de OUTRO produto (mesma região da página, itens
   // diferentes). Preferível pular um candidato a arriscar postar a coisa errada.
-  async function verifyOne(p) {
-    let r;
+  // Tenta uma requisição simples (rápida, sem custo); se vier bloqueada (antibot,
+  // captcha, erro HTTP) ou sem og:title reconhecível, tenta de novo pela sessão logada
+  // do afiliado (mais lenta, mas passa pelos bloqueios — já confirmado na prática).
+  async function fetchProductBody(url) {
     try {
-      r = await axios.get(p.url, {
+      const r = await axios.get(url, {
         headers: { 'User-Agent': UA, Referer: 'https://www.mercadolivre.com.br/ofertas' },
         maxRedirects: 5,
         timeout: 10000,
         validateStatus: () => true,
       });
+      const body = typeof r.data === 'string' ? r.data : '';
+      const blocked = r.status >= 400 || body.includes('suspicious-traffic') || body.includes('abuse-captcha');
+      if (!blocked) return { body, status: r.status };
+    } catch (_) { /* cai pro navegador logado abaixo */ }
+
+    try {
+      const body = await fetchPageHtml(userId, url);
+      return { body, status: 200 };
     } catch (e) {
-      // Sem acesso à página de verdade do produto, não tem como confirmar que o
-      // título/preço raspados de /ofertas realmente são desse mesmo link — a raspagem
-      // por proximidade de texto já causou pelo menos um caso real de mismatch (preço e
-      // descrição de um produto, link de outro completamente diferente). Descarta em vez
-      // de confiar cegamente nos dados não verificados.
-      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — erro ao abrir página (${e.message}), sem como confirmar que os dados batem com o link.`);
+      return { body: '', status: 0, error: e };
+    }
+  }
+
+  async function verifyOne(p) {
+    const { body, status, error } = await fetchProductBody(p.url);
+
+    if (!body) {
+      // Nem a requisição simples nem o navegador logado conseguiram abrir a página —
+      // sem como confirmar que o título/preço raspados de /ofertas realmente são desse
+      // mesmo link. A raspagem por proximidade de texto já causou na prática um produto
+      // postado com a descrição/preço de OUTRO produto (mesma região da página, itens
+      // diferentes). Descarta em vez de confiar cegamente nos dados não verificados.
+      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — não deu pra abrir a página do produto${error ? ` (${error.message})` : ''}.`);
       return null;
     }
-
-    const body = typeof r.data === 'string' ? r.data : '';
 
     // Produto confirmadamente indisponível (a página carregou normal e diz isso)
-    if (r.status < 400 && (body.includes('anuncio-indisponivel') || body.includes('Anúncio indisponível'))) {
+    if (status < 400 && (body.includes('anuncio-indisponivel') || body.includes('Anúncio indisponível'))) {
       console.log(`[ML] ❌ Indisponível: ${p.ml_id}`);
-      return null;
-    }
-
-    // Bloqueio antibot do ML (página de "suspicious traffic") ou erro HTTP — mesmo motivo
-    // acima: sem a página real pra conferir, não arrisca postar título/preço não verificados.
-    if (r.status >= 400 || body.includes('suspicious-traffic')) {
-      console.log(`[ML] ⚠️ Pulando ${p.ml_id} — bloqueado/erro HTTP ${r.status} ao verificar página do produto.`);
       return null;
     }
 
@@ -377,6 +386,13 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
           }
         }
       } catch(_) {}
+
+      if (!realPrice) {
+        // Candidato de busca por palavra-chave (sem preço prévio do scraping) cuja página
+        // não tem JSON-LD com preço reconhecível — sem preço confiável, não posta.
+        console.log(`[ML] ⚠️ Pulando ${p.ml_id} — sem preço confirmado na página do produto.`);
+        return null;
+      }
 
       const realDiscount = realOrigPrice
         ? Math.round(((realOrigPrice - realPrice) / realOrigPrice) * 100)
