@@ -237,52 +237,6 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
   }
   }
 
-  // ── 2. Keywords via busca do site (sessão logada do afiliado) ───────────────
-  // A API oficial de busca (api.mercadolibre.com/sites/MLB/search) exige um token com
-  // escopo que o app não tem — só dá 401/403, mesmo com o token recém-renovado. A página
-  // pública de busca (lista.mercadolivre.com.br) funciona sem token, mas bloqueia acesso
-  // anônimo (redireciona pra verificação de conta); com a sessão logada do afiliado
-  // (mesma usada pra gerar link meli.la), carrega normal e traz resultados de verdade —
-  // já confirmado manualmente com "dji agras" trazendo peças reais do nicho.
-  //
-  // Sem preço/desconto conhecido nessa etapa (só título e link) — quem confirma preço de
-  // verdade é a verificação na página individual de cada produto (passo 4 abaixo), que já
-  // não confia em dado não verificado. Por isso essa lista entra sempre como candidatos
-  // "sem desconto garantido"; o passo 4 prioriza os que, depois de verificados, batem o
-  // desconto sugerido, e só cai pros demais (do nicho, sem desconto) se nenhum bater.
-  if (hasKeywords) {
-    // Até 6 termos — perfis de nicho (ex: "drones agrícolas, geradores para drone,
-    // misturador, motobomba, epi") costumam precisar de vários termos pra cobrir o
-    // segmento inteiro, não só o produto principal.
-    const terms = keywords.split(',').map(k => k.trim()).filter(Boolean).slice(0, 6);
-    const seenIds = new Set();
-    for (const term of terms) {
-      try {
-        const html = await searchProductsHtml(userId, term);
-        let foundHere = 0;
-        for (const [, rawHref] of html.matchAll(/href="([^"]+\/p\/MLB[^"]+)"/g)) {
-          const catId = rawHref.match(/\/p\/(MLB\d+)/)?.[1];
-          const wid = rawHref.match(/wid=(MLB\d+)/)?.[1];
-          const mlId = wid || catId;
-          if (!catId || !mlId || seenIds.has(mlId)) continue;
-          seenIds.add(mlId);
-          foundHere++;
-          const cleanHref = rawHref.startsWith('http')
-            ? rawHref.split('#')[0]
-            : `https://www.mercadolivre.com.br${rawHref.split('#')[0]}`;
-          candidates.push({
-            ml_id: mlId, catalog_id: catId, url: cleanHref,
-            title: null, price: null, original_price: null, discount_percent: 0,
-            image_url: null, affiliate_url: null, category: null, custom_text: null,
-          });
-        }
-        console.log(`[ML Search] "${term}": ${foundHere} produto(s) encontrados na busca`);
-      } catch (err) {
-        console.error(`[ML Search] Erro para "${term}":`, err.message);
-      }
-    }
-  }
-
   // Se a raspagem de /ofertas falhou (bloqueio antibot, rede, etc.) e não sobrou nenhum
   // candidato de outra fonte, é um erro real — diferente de "raspou certinho mas não achou
   // nada com esse filtro". Distinguir isso ajuda a diagnosticar em vez de mostrar sempre a
@@ -295,20 +249,7 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     throw new Error(`Não consegui acessar a página de ofertas do Mercado Livre agora (${ofertasError.message}). Tente novamente em instantes.`);
   }
 
-  // ── 3. Deduplica, exclui recentes, embaralha ──────────────────────────────
-  const seen = new Set();
-  let unique = candidates.filter(p => {
-    if (seen.has(p.ml_id) || excludeIds.has(p.ml_id)) return false;
-    seen.add(p.ml_id);
-    return true;
-  });
-  for (let i = unique.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [unique[i], unique[j]] = [unique[j], unique[i]];
-  }
-  console.log(`[ML] ${unique.length} candidatos para verificar...`);
-
-  // ── 4. Verifica um por um buscando dados da PÁGINA DO PRODUTO ───────────────
+  // ── 3. Verifica um por um buscando dados da PÁGINA DO PRODUTO ───────────────
   // Estratégia: abre a página do catálogo (com wid) e extrai og:title + og:image.
   // Isso evita dependência da API pública (que retorna 403) e garante que
   // título e imagem são exatamente os do produto que o usuário vai ver ao clicar.
@@ -432,31 +373,99 @@ async function fetchPromoProducts({ userId, minDiscount = 20, limit = 50, keywor
     }
   }
 
-  // Verifica um por um; o primeiro que bater o desconto sugerido já resolve. Se nenhum
-  // bater (comum em nichos, onde poucos produtos têm desconto ativo no momento), guarda o
-  // primeiro verificado como reserva — melhor postar algo do nicho certo sem desconto do
-  // que não postar nada. Limite de tentativas pra não ficar verificando indefinidamente.
+  // Deduplica + exclui já postados/bloqueados + embaralha um lote de candidatos, depois
+  // verifica um por um na página real. O primeiro que bater o desconto sugerido já resolve.
+  // Se nenhum bater (comum em nichos, onde poucos produtos têm desconto ativo no momento),
+  // guarda o primeiro verificado como reserva — melhor postar algo do nicho certo sem
+  // desconto do que não postar nada. Limite de tentativas pra não verificar indefinidamente.
   const MAX_VERIFY_ATTEMPTS = 15;
-  let fallbackResult = null;
-  let attempts = 0;
-  for (const p of unique) {
-    if (attempts >= MAX_VERIFY_ATTEMPTS) break;
-    attempts++;
-    const result = await verifyOne(p);
-    if (!result) continue;
-    if (result.discount_percent >= minDiscount) {
-      console.log(`[ML] 🎯 Produto selecionado: ${result.title?.slice(0,50)}`);
-      return [result];
+  async function trySelect(rawCandidates) {
+    const seen = new Set();
+    const unique = rawCandidates.filter(p => {
+      if (seen.has(p.ml_id) || excludeIds.has(p.ml_id)) return false;
+      seen.add(p.ml_id);
+      return true;
+    });
+    if (!unique.length) return [];
+    for (let i = unique.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [unique[i], unique[j]] = [unique[j], unique[i]];
     }
-    if (!fallbackResult) fallbackResult = result;
+    console.log(`[ML] ${unique.length} candidato(s) pra verificar (de ${rawCandidates.length} encontrado(s), descontando já postados/bloqueados)...`);
+
+    let fallbackResult = null;
+    let attempts = 0;
+    for (const p of unique) {
+      if (attempts >= MAX_VERIFY_ATTEMPTS) break;
+      attempts++;
+      const result = await verifyOne(p);
+      if (!result) continue;
+      if (result.discount_percent >= minDiscount) {
+        console.log(`[ML] 🎯 Produto selecionado: ${result.title?.slice(0,50)}`);
+        return [result];
+      }
+      if (!fallbackResult) fallbackResult = result;
+    }
+    if (fallbackResult) {
+      console.log(`[ML] 🎯 Produto selecionado (sem o desconto sugerido, priorizando a palavra-chave): ${fallbackResult.title?.slice(0,50)}`);
+      return [fallbackResult];
+    }
+    return [];
   }
 
-  if (fallbackResult) {
-    console.log(`[ML] 🎯 Produto selecionado (sem o desconto sugerido, priorizando a palavra-chave): ${fallbackResult.title?.slice(0,50)}`);
-    return [fallbackResult];
+  if (!hasKeywords) {
+    const result = await trySelect(candidates);
+    if (!result.length) console.log(`[ML] Nenhum produto válido encontrado entre ${candidates.length} candidatos de /ofertas.`);
+    return result;
   }
 
-  console.log(`[ML] Nenhum produto válido encontrado entre ${unique.length} candidatos.`);
+  // ── 4. Palavras-chave: tenta uma de cada vez, na ordem escrita no perfil. Só passa pra
+  // próxima se a atual não render NENHUM produto novo (tudo já postado essa semana, sem
+  // preço confirmável, ou indisponível) — assim, quando o nicho da primeira palavra-chave
+  // se esgota, o perfil continua postando usando a segunda, terceira etc., em vez de parar.
+  // Busca via a página pública do site (sessão logada do afiliado) porque a API oficial de
+  // busca exige um token com escopo que o app não tem (só dá 401/403, mesmo renovado).
+  const terms = keywords.split(',').map(k => k.trim()).filter(Boolean).slice(0, 6);
+  for (const term of terms) {
+    let termCandidates = [];
+    try {
+      const html = await searchProductsHtml(userId, term);
+      const seenHere = new Set();
+      for (const [, rawHref] of html.matchAll(/href="([^"]+\/p\/MLB[^"]+)"/g)) {
+        const catId = rawHref.match(/\/p\/(MLB\d+)/)?.[1];
+        const wid = rawHref.match(/wid=(MLB\d+)/)?.[1];
+        const mlId = wid || catId;
+        if (!catId || !mlId || seenHere.has(mlId)) continue;
+        seenHere.add(mlId);
+        const cleanHref = rawHref.startsWith('http')
+          ? rawHref.split('#')[0]
+          : `https://www.mercadolivre.com.br${rawHref.split('#')[0]}`;
+        termCandidates.push({
+          ml_id: mlId, catalog_id: catId, url: cleanHref,
+          title: null, price: null, original_price: null, discount_percent: 0,
+          image_url: null, affiliate_url: null, category: null, custom_text: null,
+        });
+      }
+      console.log(`[ML Search] "${term}": ${termCandidates.length} produto(s) encontrados na busca`);
+    } catch (err) {
+      console.error(`[ML Search] Erro para "${term}":`, err.message);
+      continue;
+    }
+
+    if (!termCandidates.length) {
+      console.log(`[ML Search] "${term}" não trouxe nenhum resultado — tentando a próxima palavra-chave, se houver.`);
+      continue;
+    }
+
+    const result = await trySelect(termCandidates);
+    if (result.length) {
+      console.log(`[ML Search] ✅ Usando resultado da palavra-chave "${term}".`);
+      return result;
+    }
+    console.log(`[ML Search] "${term}" não rendeu nenhum produto novo/válido (tudo já postado essa semana, sem preço confirmável, etc.) — tentando a próxima palavra-chave, se houver.`);
+  }
+
+  console.log('[ML] Nenhuma das palavras-chave rendeu produto.');
   return [];
 }
 
