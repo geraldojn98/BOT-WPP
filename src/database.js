@@ -533,6 +533,10 @@ function createUserDb(userId) {
     });
   }
   function deletePostProfile(id) {
+    try {
+      const recurring = db.prepare('SELECT id FROM recurring_products WHERE profile_id = ?').all(id);
+      for (const r of recurring) deleteRecurringProduct(r.id);
+    } catch (_) {}
     return db.prepare('DELETE FROM post_profiles WHERE id = ?').run(id);
   }
   function togglePostProfile(id, active) {
@@ -548,12 +552,14 @@ function createUserDb(userId) {
   function getProductByMlId(mlId) {
     return db.prepare('SELECT * FROM products WHERE ml_id = ?').get(mlId);
   }
-  function wasPostedRecentlyByMlId(mlId, hours = 24) {
-    // Verifica direto na coluna ml_id do histórico (funciona mesmo se o produto foi deletado)
+  // Verifica direto na coluna ml_id do histórico (funciona mesmo se o produto foi deletado)
+  // desde uma data de corte explícita — usada pra "não repete na mesma semana", onde o
+  // corte é a segunda-feira da semana atual (calculada em bot.js, no fuso do usuário).
+  function wasPostedSinceByMlId(mlId, sinceIso) {
     const result = db.prepare(`
       SELECT COUNT(*) as count FROM post_history
-      WHERE ml_id = ? AND sent_at > datetime('now', '-${hours} hours')
-    `).get(mlId);
+      WHERE ml_id = ? AND sent_at >= ?
+    `).get(mlId, sinceIso);
     return result.count > 0;
   }
 
@@ -650,6 +656,80 @@ function createUserDb(userId) {
   }
   function logScheduledMessageFired(messageId, date) {
     db.prepare('INSERT INTO scheduled_message_log (message_id, target_date) VALUES (?, ?)').run(messageId, date);
+  }
+
+  // ===== PRODUTOS RECORRENTES =====
+  // Por padrão nenhum produto se repete numa mesma semana (ver wasPostedSinceByMlId) —
+  // isso aqui é a exceção explícita: um produto específico, escolhido pelo usuário dentro
+  // de um perfil, que deve continuar sendo postado com uma frequência própria (todo dia,
+  // dia sim dia não etc.), num horário aleatório do dia em que for a vez dele.
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS recurring_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        profile_id INTEGER NOT NULL,
+        product_id INTEGER NOT NULL,
+        interval_days INTEGER DEFAULT 1,
+        active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS recurring_product_targets (
+        recurring_id INTEGER,
+        target_date TEXT,
+        target_time TEXT,
+        PRIMARY KEY (recurring_id, target_date)
+      );
+      CREATE TABLE IF NOT EXISTS recurring_product_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        recurring_id INTEGER,
+        target_date TEXT,
+        fired_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+  } catch (_) {}
+
+  function getRecurringProductsForProfile(profileId) {
+    return db.prepare(`
+      SELECT rp.*, p.title as product_title, p.image_url as product_image_url
+      FROM recurring_products rp
+      LEFT JOIN products p ON p.id = rp.product_id
+      WHERE rp.profile_id = ?
+      ORDER BY rp.created_at DESC
+    `).all(profileId);
+  }
+  function getActiveRecurringProducts() {
+    return db.prepare('SELECT * FROM recurring_products WHERE active = 1').all();
+  }
+  function addRecurringProduct(profileId, productId, intervalDays) {
+    return db.prepare(`
+      INSERT INTO recurring_products (profile_id, product_id, interval_days, active)
+      VALUES (?, ?, ?, 1)
+    `).run(profileId, productId, Math.max(1, parseInt(intervalDays) || 1));
+  }
+  function deleteRecurringProduct(id) {
+    try { db.prepare('DELETE FROM recurring_product_targets WHERE recurring_id = ?').run(id); } catch (_) {}
+    try { db.prepare('DELETE FROM recurring_product_log WHERE recurring_id = ?').run(id); } catch (_) {}
+    return db.prepare('DELETE FROM recurring_products WHERE id = ?').run(id);
+  }
+  function toggleRecurringProduct(id, active) {
+    return db.prepare('UPDATE recurring_products SET active = ? WHERE id = ?').run(active ? 1 : 0, id);
+  }
+  function getRecurringTargetTime(recurringId, date) {
+    const row = db.prepare('SELECT target_time FROM recurring_product_targets WHERE recurring_id = ? AND target_date = ?').get(recurringId, date);
+    return row ? row.target_time : null;
+  }
+  function setRecurringTargetTime(recurringId, date, time) {
+    db.prepare('INSERT OR REPLACE INTO recurring_product_targets (recurring_id, target_date, target_time) VALUES (?, ?, ?)').run(recurringId, date, time);
+  }
+  function wasRecurringProductFiredOn(recurringId, date) {
+    return !!db.prepare('SELECT 1 FROM recurring_product_log WHERE recurring_id = ? AND target_date = ?').get(recurringId, date);
+  }
+  function logRecurringProductFired(recurringId, date) {
+    db.prepare('INSERT INTO recurring_product_log (recurring_id, target_date) VALUES (?, ?)').run(recurringId, date);
+  }
+  function getLastRecurringFireDate(recurringId) {
+    const row = db.prepare('SELECT target_date FROM recurring_product_log WHERE recurring_id = ? ORDER BY target_date DESC LIMIT 1').get(recurringId);
+    return row ? row.target_date : null;
   }
 
   // ===== RESPOSTAS AUTOMÁTICAS / GESTÃO DE GRUPOS / WEBHOOKS / CAMPANHAS =====
@@ -1173,7 +1253,7 @@ function createUserDb(userId) {
   return {
     getAllProducts, getActiveProducts, getProductById, getProductByMlId,
     addProduct, updateProduct, deleteProduct, toggleProduct,
-    addPostHistory, getPostHistory, getPostsToday, wasPostedRecently, wasPostedRecentlyByMlId, clearHistory,
+    addPostHistory, getPostHistory, getPostsToday, wasPostedRecently, wasPostedSinceByMlId, clearHistory,
     addLog, getLogs, clearLogs,
     getPostsTodayForProfile, getLastPostAtForProfile, getAllPostProfiles, getActivePostProfiles, getPostProfileById,
     addPostProfile, updatePostProfile, deletePostProfile, togglePostProfile,
@@ -1182,6 +1262,10 @@ function createUserDb(userId) {
     getAllScheduledMessages, getScheduledMessageById, addScheduledMessage, updateScheduledMessage,
     deleteScheduledMessage, toggleScheduledMessage,
     getTargetTime, setTargetTime, wasScheduledMessageFiredToday, logScheduledMessageFired,
+    // Produtos recorrentes
+    getRecurringProductsForProfile, getActiveRecurringProducts, addRecurringProduct,
+    deleteRecurringProduct, toggleRecurringProduct, getRecurringTargetTime, setRecurringTargetTime,
+    wasRecurringProductFiredOn, logRecurringProductFired, getLastRecurringFireDate,
     // Respostas automáticas
     getAllAutoReplyRules, getActiveAutoReplyRules, getAutoReplyRuleById, addAutoReplyRule, updateAutoReplyRule,
     deleteAutoReplyRule, toggleAutoReplyRule, getLastFiredAt, logAutoReplyFired, wasAutoReplyFiredRecently,

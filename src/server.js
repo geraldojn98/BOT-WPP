@@ -378,6 +378,34 @@ app.post('/api/post-profiles/:id/post-now', async (req, res) => {
   }
 });
 
+// ===== PRODUTOS RECORRENTES (exceção à regra de não repetir na semana) =====
+app.get('/api/post-profiles/:id/recurring-products', (req, res) => {
+  res.json(req.userDb.getRecurringProductsForProfile(req.params.id));
+});
+
+app.post('/api/post-profiles/:id/recurring-products', (req, res) => {
+  try {
+    const profile = req.userDb.getPostProfileById(req.params.id);
+    if (!profile) return res.status(404).json({ error: 'Perfil não encontrado.' });
+    const product = req.userDb.getProductById(req.body.product_id);
+    if (!product) return res.status(404).json({ error: 'Produto não encontrado.' });
+    const result = req.userDb.addRecurringProduct(req.params.id, req.body.product_id, req.body.interval_days);
+    res.json({ ok: true, id: result.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/recurring-products/:id', (req, res) => {
+  req.userDb.deleteRecurringProduct(req.params.id);
+  res.json({ ok: true });
+});
+
+app.patch('/api/recurring-products/:id/toggle', (req, res) => {
+  req.userDb.toggleRecurringProduct(req.params.id, req.body.active);
+  res.json({ ok: true });
+});
+
 // ===== DIAGNÓSTICO ML =====
 app.get('/api/debug/ml', async (req, res) => {
   try {

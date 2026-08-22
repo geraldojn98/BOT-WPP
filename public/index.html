@@ -1292,6 +1292,23 @@
         <input type="time" id="pp-interval-first-time" value="09:00" style="display:none;" />
       </div>
 
+      <div class="form-group" id="pp-recurring-area" style="display:none;">
+        <div class="form-label">🔁 Produtos recorrentes</div>
+        <div class="form-desc">Por padrão, nenhum produto se repete na mesma semana (segunda a domingo). Aqui você escolhe produtos já cadastrados que devem continuar sendo postados com uma frequência própria — ex: "hélices de drone" todo dia, "arruelas de hélice" dia sim dia não.</div>
+        <div id="pp-recurring-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:2;min-width:180px;">
+            <div class="form-label" style="font-size:0.78rem;margin-bottom:4px;">Produto</div>
+            <select id="pp-recurring-product-select" style="width:100%;"></select>
+          </div>
+          <div style="flex:1;min-width:130px;">
+            <div class="form-label" style="font-size:0.78rem;margin-bottom:4px;">A cada quantos dias</div>
+            <input type="number" id="pp-recurring-interval" min="1" value="1" style="width:100%;" />
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="addPpRecurringProduct()">＋ Adicionar</button>
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button type="submit" class="btn btn-primary">💾 Salvar perfil</button>
         <button type="button" class="btn btn-ghost" onclick="closeModal('modal-postprofile')">Cancelar</button>
@@ -2994,6 +3011,10 @@ function updatePpContentMode() {
   const mode = document.querySelector('input[name="pp-content-mode"]:checked').value;
   document.getElementById('pp-custom-area').style.display = mode === 'custom' ? 'block' : 'none';
   document.getElementById('pp-products-fields').style.display = mode === 'custom' ? 'none' : 'block';
+  // Produtos recorrentes só fazem sentido pra perfil de produtos, e só depois de o
+  // perfil já existir (precisa de um profile_id salvo pra vincular).
+  const isEditing = !!document.getElementById('pp-id').value;
+  document.getElementById('pp-recurring-area').style.display = (mode !== 'custom' && isEditing) ? 'block' : 'none';
 }
 
 function updatePpCustomType() {
@@ -3090,8 +3111,64 @@ async function editPostProfile(id) {
 
   const groupIds = (p.group_ids || '').split(',').filter(Boolean);
   const seriesIds = (p.series_ids || '').split(',').filter(Boolean);
-  await Promise.all([loadPpGroupSelector(groupIds), loadPpSeriesSelector(seriesIds)]);
+  const tasks = [loadPpGroupSelector(groupIds), loadPpSeriesSelector(seriesIds)];
+  if (p.content_mode !== 'custom') tasks.push(loadPpRecurringProducts(id));
+  await Promise.all(tasks);
   openModal('modal-postprofile');
+}
+
+// ===== PRODUTOS RECORRENTES (dentro do modal de perfil) =====
+async function loadPpRecurringProducts(profileId) {
+  const [items, allProducts] = await Promise.all([
+    fetch(`/api/post-profiles/${profileId}/recurring-products`).then(r => r.json()).catch(() => []),
+    fetch('/api/products').then(r => r.json()).catch(() => []),
+  ]);
+
+  const select = document.getElementById('pp-recurring-product-select');
+  if (!allProducts.length) {
+    select.innerHTML = '<option value="">Nenhum produto cadastrado ainda</option>';
+  } else {
+    select.innerHTML = allProducts.map(p => `<option value="${p.id}">${(p.title || '').slice(0, 60)}</option>`).join('');
+  }
+
+  const list = document.getElementById('pp-recurring-list');
+  if (!items.length) {
+    list.innerHTML = '<span style="color:var(--muted);font-size:0.85rem;">Nenhum produto recorrente configurado neste perfil.</span>';
+    return;
+  }
+  list.innerHTML = items.map(it => `
+    <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;">
+      <div style="flex:1;font-size:0.88rem;">
+        <strong>${(it.product_title || '(produto removido)').slice(0, 60)}</strong>
+        <div style="color:var(--muted);font-size:0.78rem;">${it.interval_days == 1 ? 'Todo dia' : `A cada ${it.interval_days} dias`}, horário aleatório</div>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="removePpRecurringProduct(${it.id}, ${profileId})" title="Remover">🗑️</button>
+    </div>
+  `).join('');
+}
+
+async function addPpRecurringProduct() {
+  const id = document.getElementById('pp-id').value;
+  if (!id) return;
+  const productId = document.getElementById('pp-recurring-product-select').value;
+  const intervalDays = document.getElementById('pp-recurring-interval').value;
+  if (!productId) return toast('Escolha um produto.', 'err');
+  if (!intervalDays || parseInt(intervalDays) < 1) return toast('Informe um intervalo de dias válido.', 'err');
+
+  const res = await fetch(`/api/post-profiles/${id}/recurring-products`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ product_id: productId, interval_days: intervalDays }),
+  });
+  const data = await res.json();
+  if (data.error) return toast('❌ ' + data.error, 'err');
+  toast('✅ Produto recorrente adicionado.');
+  await loadPpRecurringProducts(id);
+}
+
+async function removePpRecurringProduct(recurringId, profileId) {
+  if (!confirm('Remover este produto recorrente? Ele volta a seguir a regra normal de não repetir na semana.')) return;
+  await fetch(`/api/recurring-products/${recurringId}`, { method: 'DELETE' });
+  await loadPpRecurringProducts(profileId);
 }
 
 async function savePostProfile(e) {

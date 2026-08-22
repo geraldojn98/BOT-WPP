@@ -198,6 +198,18 @@ function getNowInTimezone(tz) {
   };
 }
 
+// Início da semana atual (segunda-feira 00:00, no fuso configurado) em formato aceito
+// pelo SQLite — usado pra "produto não repete na mesma semana". Aproximação por UTC
+// (sem tratar troca de horário de verão), suficiente pro fuso padrão do app
+// (America/Sao_Paulo, que não observa DST desde 2019).
+function getStartOfWeekIso(timezone) {
+  const { day } = getNowInTimezone(timezone); // '0' domingo ... '6' sábado
+  const daysSinceMonday = (parseInt(day, 10) + 6) % 7;
+  const cutoff = new Date(Date.now() - daysSinceMonday * 24 * 3600 * 1000);
+  cutoff.setUTCHours(0, 0, 0, 0);
+  return cutoff.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 function startCron(userId, io) {
   const t = getTenant(userId);
   if (t.cronJob) t.cronJob.stop();
@@ -220,6 +232,8 @@ function startCron(userId, io) {
 
     // Mensagens agendadas verificadas a cada minuto (independente dos perfis de postagem)
     await checkScheduledMessages(userId, io);
+    // Produtos recorrentes também — cada um tem seu próprio intervalo/horário
+    await checkRecurringProducts(userId, io);
 
     if (Date.now() - t.lastLidPruneAt > 24 * 3600 * 1000) {
       t.lastLidPruneAt = Date.now();
@@ -284,10 +298,12 @@ async function resolveProductToPost(userId, userDb, { minDiscount, keywords, pri
   // perfil nichado podia cair pra qualquer produto cadastrado na conta, de outro nicho
   // completamente diferente (ex: perfil de peças de drone agrícola postando "potes herméticos"
   // porque isso é o que tinha, sem relação nenhuma, no catálogo geral do usuário).
+  const timezone = userDb.getSetting('bot_timezone') || 'America/Sao_Paulo';
+  const weekStart = getStartOfWeekIso(timezone);
   const keywordTerms = (keywords || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
   const eligible = userDb.getActiveProducts().filter(p => {
     if (p.ml_id && excludeIds.has(p.ml_id)) return false;
-    if (p.ml_id && userDb.wasPostedRecentlyByMlId(p.ml_id, 24)) return false;
+    if (p.ml_id && userDb.wasPostedSinceByMlId(p.ml_id, weekStart)) return false;
     if (keywordTerms.length) {
       const title = (p.title || '').toLowerCase();
       if (!keywordTerms.some(term => title.includes(term))) return false;
@@ -409,15 +425,16 @@ async function runPost(userId, profile, io) {
     const priceMin = profile.price_min && parseFloat(profile.price_min) > 0 ? profile.price_min : null;
     const priceMax = profile.price_max && parseFloat(profile.price_max) > 0 ? profile.price_max : null;
 
-    // 1. Tenta buscar o primeiro produto válido no ML (já exclui os postados recentemente);
+    // 1. Tenta buscar o primeiro produto válido no ML (já exclui os postados na semana);
     // se o ML bloquear/falhar, resolveProductToPost já cai pra um produto cadastrado aleatório.
+    const weekStartForExclude = getStartOfWeekIso(userDb.getSetting('bot_timezone') || 'America/Sao_Paulo');
     const recentIds = new Set(
       userDb.getPostHistory(200).map(h => h.ml_id).filter(Boolean)
     );
-    // Monta set de exclusão: postados nas últimas 24h + bloqueados
-    const excludeIds = new Set([...recentIds].filter(id => userDb.wasPostedRecentlyByMlId(id, 24) || userDb.isBlocked(id)));
+    // Monta set de exclusão: postados nesta semana (segunda a domingo) + bloqueados
+    const excludeIds = new Set([...recentIds].filter(id => userDb.wasPostedSinceByMlId(id, weekStartForExclude) || userDb.isBlocked(id)));
 
-    console.log(`[Post] ${tag} Buscando promoção no ML... desconto>=${minDiscount}% | excluindo ${excludeIds.size} IDs recentes`);
+    console.log(`[Post] ${tag} Buscando promoção no ML... desconto>=${minDiscount}% | excluindo ${excludeIds.size} IDs postados esta semana`);
     let product, fallback;
     try {
       ({ product, fallback } = await resolveProductToPost(userId, userDb, { minDiscount, keywords, priceMin, priceMax, excludeIds }));
@@ -1124,8 +1141,9 @@ async function runAutoPost(userId, io, profileId) {
     const priceMin = profile.price_min || null;
     const priceMax = profile.price_max || null;
 
+    const weekStartForExclude = getStartOfWeekIso(userDb.getSetting('bot_timezone') || 'America/Sao_Paulo');
     const recentIds = new Set(userDb.getPostHistory(200).map(h => h.ml_id).filter(Boolean));
-    const excludeIds = new Set([...recentIds].filter(id => userDb.wasPostedRecentlyByMlId(id, 24) || userDb.isBlocked(id)));
+    const excludeIds = new Set([...recentIds].filter(id => userDb.wasPostedSinceByMlId(id, weekStartForExclude) || userDb.isBlocked(id)));
 
     const { product, fallback } = await resolveProductToPost(userId, userDb, { minDiscount, keywords, priceMin, priceMax, excludeIds });
     if (!product) throw new Error('Nenhum produto em promoção encontrado no momento. Tente novamente em instantes ou cadastre produtos manualmente.');
@@ -1289,6 +1307,80 @@ async function checkScheduledMessages(userId, io) {
     } catch (err) {
       console.error(`[ScheduledMsg] Erro em "${msg.name}":`, err.message);
       userDb.addLog('error', 'scheduled_message', `Mensagem agendada "${msg.name}" não foi enviada: ${err.message}`);
+    }
+  }
+}
+
+// Dias entre duas datas "YYYY-MM-DD" (comparação por dia civil, sem hora).
+function daysBetweenDates(a, b) {
+  return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000);
+}
+
+/**
+ * Dispara produtos marcados como "recorrentes" — a exceção explícita à regra padrão de
+ * não repetir produto na mesma semana (ver getStartOfWeekIso/wasPostedSinceByMlId). Cada
+ * um tem seu próprio intervalo (todo dia, dia sim dia não etc.) e dispara uma vez, num
+ * horário aleatório do dia (08h–21h), no dia em que for a vez dele — mesmo padrão já usado
+ * pelas mensagens agendadas (checkScheduledMessages), só que postando um produto real em
+ * vez de um texto livre.
+ */
+async function checkRecurringProducts(userId, io) {
+  const t = getTenant(userId);
+  const userDb = db.getUserDb(userId);
+  if (t.botStatus !== 'connected') return;
+  const items = userDb.getActiveRecurringProducts();
+  if (!items.length) return;
+
+  const timezone = userDb.getSetting('bot_timezone') || 'America/Sao_Paulo';
+  const { hh, mm, date: today } = getNowInTimezone(timezone);
+  const currentTime = `${hh}:${mm}`;
+
+  for (const item of items) {
+    try {
+      if (userDb.wasRecurringProductFiredOn(item.id, today)) continue;
+
+      const lastFireDate = userDb.getLastRecurringFireDate(item.id);
+      if (lastFireDate && daysBetweenDates(lastFireDate, today) < item.interval_days) continue;
+
+      let targetTime = userDb.getRecurringTargetTime(item.id, today);
+      if (!targetTime) {
+        const startMin = 8 * 60, endMin = 21 * 60; // janela padrão 08:00–21:00
+        const rand = startMin + Math.floor(Math.random() * (endMin - startMin + 1));
+        targetTime = `${String(Math.floor(rand/60)).padStart(2,'0')}:${String(rand%60).padStart(2,'0')}`;
+        userDb.setRecurringTargetTime(item.id, today, targetTime);
+      }
+      if (currentTime !== targetTime) continue;
+
+      const profile = userDb.getPostProfileById(item.profile_id);
+      const product = userDb.getProductById(item.product_id);
+      if (!profile || !profile.active || !product) {
+        console.log(`[Recorrente] Item ${item.id} sem perfil ativo ou produto válido — pulando.`);
+        userDb.logRecurringProductFired(item.id, today);
+        continue;
+      }
+      const groupIds = resolveProfileGroupIds(userDb, profile);
+      if (!groupIds.length) {
+        userDb.addLog('warning', 'post', `[Recorrente] "${product.title}" não enviado: nenhum grupo configurado no perfil "${profile.name}".`);
+        userDb.logRecurringProductFired(item.id, today);
+        continue;
+      }
+
+      const text = await generatePostText(product, profile.claude_prompt || null, userDb);
+      const link = product.affiliate_url || product.url;
+      const finalText = `${link}\n\n${text}`;
+
+      const { sent, failed } = await sendToGroups(userId, groupIds, finalText, product.image_url);
+      userDb.addPostHistory(product.id, finalText, 'sent', product.ml_id || null, profile.id);
+      userDb.logRecurringProductFired(item.id, today);
+      emitToUser(io, userId, 'post_sent', { profile: profile.name, product: product.title, text: finalText, groups: sent.length, failed: failed.length });
+
+      if (failed.length) {
+        userDb.addLog('warning', 'post', `[Recorrente] "${product.title}" falhou em ${failed.length}/${groupIds.length} grupo(s).`);
+      }
+      userDb.addLog('info', 'post', `[Recorrente] "${product.title}" enviado para ${sent.length} grupo(s) (perfil "${profile.name}").`);
+    } catch (err) {
+      console.error(`[Recorrente] Erro no item ${item.id}:`, err.message);
+      userDb.addLog('error', 'post', `[Recorrente] Erro ao postar produto recorrente: ${err.message}`);
     }
   }
 }
